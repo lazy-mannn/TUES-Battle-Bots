@@ -1,0 +1,2422 @@
+ARM GAS  /tmp/ccM5ic1O.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 1
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"setup.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.I2C_Init,"ax",%progbits
+  16              		.align	1
+  17              		.global	I2C_Init
+  18              		.arch armv7-m
+  19              		.syntax unified
+  20              		.thumb
+  21              		.thumb_func
+  22              		.fpu softvfp
+  24              	I2C_Init:
+  25              	.LFB66:
+  26              		.file 1 "Src/setup.c"
+   1:Src/setup.c   **** /*
+   2:Src/setup.c   **** * This file is part of the hoverboard-firmware-hack project.
+   3:Src/setup.c   **** *
+   4:Src/setup.c   **** * Copyright (C) 2017-2018 Rene Hopf <renehopf@mac.com>
+   5:Src/setup.c   **** * Copyright (C) 2017-2018 Nico Stute <crinq@crinq.de>
+   6:Src/setup.c   **** * Copyright (C) 2017-2018 Niklas Fauth <niklas.fauth@kit.fail>
+   7:Src/setup.c   **** *
+   8:Src/setup.c   **** * This program is free software: you can redistribute it and/or modify
+   9:Src/setup.c   **** * it under the terms of the GNU General Public License as published by
+  10:Src/setup.c   **** * the Free Software Foundation, either version 3 of the License, or
+  11:Src/setup.c   **** * (at your option) any later version.
+  12:Src/setup.c   **** *
+  13:Src/setup.c   **** * This program is distributed in the hope that it will be useful,
+  14:Src/setup.c   **** * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  15:Src/setup.c   **** * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  16:Src/setup.c   **** * GNU General Public License for more details.
+  17:Src/setup.c   **** *
+  18:Src/setup.c   **** * You should have received a copy of the GNU General Public License
+  19:Src/setup.c   **** * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  20:Src/setup.c   **** */
+  21:Src/setup.c   **** 
+  22:Src/setup.c   **** /*
+  23:Src/setup.c   **** tim1 master, enable -> trgo
+  24:Src/setup.c   **** tim8, gated slave mode, trgo by tim1 trgo. overflow -> trgo
+  25:Src/setup.c   **** adc1,adc2 triggered by tim8 trgo
+  26:Src/setup.c   **** adc 1,2 dual mode
+  27:Src/setup.c   **** 
+  28:Src/setup.c   **** ADC1             ADC2
+  29:Src/setup.c   **** R_Blau PC4 CH14  R_Gelb PC5 CH15
+  30:Src/setup.c   **** L_Grün PA0 CH01  L_Blau PC3 CH13
+  31:Src/setup.c   **** R_DC PC1 CH11    L_DC PC0 CH10
+  32:Src/setup.c   **** BAT   PC2 CH12   L_TX PA2 CH02
+ARM GAS  /tmp/ccM5ic1O.s 			page 2
+
+
+  33:Src/setup.c   **** BAT   PC2 CH12   L_RX PA3 CH03
+  34:Src/setup.c   **** 
+  35:Src/setup.c   **** pb10 usart3 dma1 channel2/3
+  36:Src/setup.c   **** */
+  37:Src/setup.c   **** 
+  38:Src/setup.c   **** #include "defines.h"
+  39:Src/setup.c   **** #include "config.h"
+  40:Src/setup.c   **** #include "setup.h"
+  41:Src/setup.c   **** 
+  42:Src/setup.c   **** TIM_HandleTypeDef htim_right;
+  43:Src/setup.c   **** TIM_HandleTypeDef htim_left;
+  44:Src/setup.c   **** ADC_HandleTypeDef hadc1;
+  45:Src/setup.c   **** ADC_HandleTypeDef hadc2;
+  46:Src/setup.c   **** I2C_HandleTypeDef hi2c2;
+  47:Src/setup.c   **** UART_HandleTypeDef huart2;
+  48:Src/setup.c   **** UART_HandleTypeDef huart3;
+  49:Src/setup.c   **** 
+  50:Src/setup.c   **** DMA_HandleTypeDef hdma_usart2_rx;
+  51:Src/setup.c   **** DMA_HandleTypeDef hdma_usart2_tx;
+  52:Src/setup.c   **** DMA_HandleTypeDef hdma_usart3_rx;
+  53:Src/setup.c   **** DMA_HandleTypeDef hdma_usart3_tx;
+  54:Src/setup.c   **** volatile adc_buf_t adc_buffer;
+  55:Src/setup.c   **** 
+  56:Src/setup.c   **** 
+  57:Src/setup.c   **** #if defined(DEBUG_SERIAL_USART2) || defined(CONTROL_SERIAL_USART2) || defined(FEEDBACK_SERIAL_USART
+  58:Src/setup.c   ****  /* USART2 init function */
+  59:Src/setup.c   ****  void UART2_Init(void)
+  60:Src/setup.c   **** {
+  61:Src/setup.c   ****   /* DMA controller clock enable */
+  62:Src/setup.c   ****   __HAL_RCC_DMA1_CLK_ENABLE();
+  63:Src/setup.c   ****   
+  64:Src/setup.c   ****   /* DMA1_Channel6_IRQn interrupt configuration */
+  65:Src/setup.c   ****   HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
+  66:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+  67:Src/setup.c   ****   /* DMA1_Channel7_IRQn interrupt configuration */
+  68:Src/setup.c   ****   HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 0, 0);
+  69:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
+  70:Src/setup.c   ****   
+  71:Src/setup.c   ****   huart2.Instance = USART2;
+  72:Src/setup.c   ****   huart2.Init.BaudRate = USART2_BAUD;
+  73:Src/setup.c   ****   huart2.Init.WordLength = USART2_WORDLENGTH;
+  74:Src/setup.c   ****   huart2.Init.StopBits = UART_STOPBITS_1;
+  75:Src/setup.c   ****   huart2.Init.Parity = UART_PARITY_NONE;
+  76:Src/setup.c   ****   huart2.Init.Mode = UART_MODE_TX_RX;
+  77:Src/setup.c   ****   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  78:Src/setup.c   ****   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  79:Src/setup.c   ****   HAL_UART_Init(&huart2);
+  80:Src/setup.c   **** }
+  81:Src/setup.c   **** #endif
+  82:Src/setup.c   **** 
+  83:Src/setup.c   **** #if defined(DEBUG_SERIAL_USART3) || defined(CONTROL_SERIAL_USART3) || defined(FEEDBACK_SERIAL_USART
+  84:Src/setup.c   **** /* USART3 init function */
+  85:Src/setup.c   **** void UART3_Init(void)
+  86:Src/setup.c   **** {
+  87:Src/setup.c   ****   /* DMA controller clock enable */
+  88:Src/setup.c   ****   __HAL_RCC_DMA1_CLK_ENABLE();
+  89:Src/setup.c   **** 
+ARM GAS  /tmp/ccM5ic1O.s 			page 3
+
+
+  90:Src/setup.c   ****   /* DMA interrupt init */
+  91:Src/setup.c   ****   /* DMA1_Channel2_IRQn interrupt configuration */
+  92:Src/setup.c   ****   HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  93:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+  94:Src/setup.c   ****   /* DMA1_Channel3_IRQn interrupt configuration */
+  95:Src/setup.c   ****   HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
+  96:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+  97:Src/setup.c   ****   
+  98:Src/setup.c   ****   huart3.Instance = USART3;
+  99:Src/setup.c   ****   huart3.Init.BaudRate = USART3_BAUD;
+ 100:Src/setup.c   ****   huart3.Init.WordLength = USART3_WORDLENGTH;
+ 101:Src/setup.c   ****   huart3.Init.StopBits = UART_STOPBITS_1;
+ 102:Src/setup.c   ****   huart3.Init.Parity = UART_PARITY_NONE;
+ 103:Src/setup.c   ****   huart3.Init.Mode = UART_MODE_TX_RX;
+ 104:Src/setup.c   ****   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+ 105:Src/setup.c   ****   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+ 106:Src/setup.c   ****   HAL_UART_Init(&huart3);
+ 107:Src/setup.c   **** }
+ 108:Src/setup.c   **** #endif
+ 109:Src/setup.c   **** 
+ 110:Src/setup.c   **** #if defined(DEBUG_SERIAL_USART2) || defined(CONTROL_SERIAL_USART2) || defined(FEEDBACK_SERIAL_USART
+ 111:Src/setup.c   ****     defined(DEBUG_SERIAL_USART3) || defined(CONTROL_SERIAL_USART3) || defined(FEEDBACK_SERIAL_USART
+ 112:Src/setup.c   **** void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
+ 113:Src/setup.c   **** {
+ 114:Src/setup.c   ****   GPIO_InitTypeDef GPIO_InitStruct = {0};
+ 115:Src/setup.c   ****   if(uartHandle->Instance==USART2)
+ 116:Src/setup.c   ****   {
+ 117:Src/setup.c   ****   /* USER CODE BEGIN USART2_MspInit 0 */
+ 118:Src/setup.c   **** 
+ 119:Src/setup.c   ****   /* USER CODE END USART2_MspInit 0 */
+ 120:Src/setup.c   ****     /* USART2 clock enable */
+ 121:Src/setup.c   ****     __HAL_RCC_USART2_CLK_ENABLE();
+ 122:Src/setup.c   ****   
+ 123:Src/setup.c   ****     __HAL_RCC_GPIOA_CLK_ENABLE();
+ 124:Src/setup.c   ****     /**USART2 GPIO Configuration    
+ 125:Src/setup.c   ****     PA2     ------> USART2_TX
+ 126:Src/setup.c   ****     PA3     ------> USART2_RX 
+ 127:Src/setup.c   ****     */
+ 128:Src/setup.c   ****     GPIO_InitStruct.Pin = GPIO_PIN_2;
+ 129:Src/setup.c   ****     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+ 130:Src/setup.c   ****     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+ 131:Src/setup.c   ****     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+ 132:Src/setup.c   **** 
+ 133:Src/setup.c   ****     GPIO_InitStruct.Pin = GPIO_PIN_3;
+ 134:Src/setup.c   ****     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+ 135:Src/setup.c   ****     GPIO_InitStruct.Pull = GPIO_PULLUP;
+ 136:Src/setup.c   ****     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+ 137:Src/setup.c   **** 
+ 138:Src/setup.c   ****     /* USART2 DMA Init */
+ 139:Src/setup.c   ****     /* USART2_RX Init */
+ 140:Src/setup.c   ****     hdma_usart2_rx.Instance = DMA1_Channel6;
+ 141:Src/setup.c   ****     hdma_usart2_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+ 142:Src/setup.c   ****     hdma_usart2_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+ 143:Src/setup.c   ****     hdma_usart2_rx.Init.MemInc = DMA_MINC_ENABLE;
+ 144:Src/setup.c   ****     hdma_usart2_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+ 145:Src/setup.c   ****     hdma_usart2_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+ 146:Src/setup.c   ****     hdma_usart2_rx.Init.Mode = DMA_CIRCULAR;
+ARM GAS  /tmp/ccM5ic1O.s 			page 4
+
+
+ 147:Src/setup.c   ****     hdma_usart2_rx.Init.Priority = DMA_PRIORITY_LOW;
+ 148:Src/setup.c   ****     HAL_DMA_Init(&hdma_usart2_rx);
+ 149:Src/setup.c   ****     __HAL_LINKDMA(uartHandle,hdmarx,hdma_usart2_rx);
+ 150:Src/setup.c   **** 
+ 151:Src/setup.c   ****     /* USART2_TX Init */
+ 152:Src/setup.c   ****     hdma_usart2_tx.Instance = DMA1_Channel7;
+ 153:Src/setup.c   ****     hdma_usart2_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+ 154:Src/setup.c   ****     hdma_usart2_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+ 155:Src/setup.c   ****     hdma_usart2_tx.Init.MemInc = DMA_MINC_ENABLE;
+ 156:Src/setup.c   ****     hdma_usart2_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+ 157:Src/setup.c   ****     hdma_usart2_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+ 158:Src/setup.c   ****     hdma_usart2_tx.Init.Mode = DMA_NORMAL;
+ 159:Src/setup.c   ****     hdma_usart2_tx.Init.Priority = DMA_PRIORITY_LOW;
+ 160:Src/setup.c   ****     HAL_DMA_Init(&hdma_usart2_tx);
+ 161:Src/setup.c   ****     __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart2_tx);
+ 162:Src/setup.c   **** 
+ 163:Src/setup.c   ****     /* USART2 interrupt Init */
+ 164:Src/setup.c   ****     HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+ 165:Src/setup.c   ****     HAL_NVIC_EnableIRQ(USART2_IRQn);
+ 166:Src/setup.c   ****   /* USER CODE BEGIN USART2_MspInit 1 */
+ 167:Src/setup.c   **** 	__HAL_UART_ENABLE_IT (uartHandle, UART_IT_IDLE);  // Enable the USART IDLE line detection interrup
+ 168:Src/setup.c   ****   /* USER CODE END USART2_MspInit 1 */
+ 169:Src/setup.c   ****   }
+ 170:Src/setup.c   ****   else if(uartHandle->Instance==USART3)
+ 171:Src/setup.c   ****   {
+ 172:Src/setup.c   ****   /* USER CODE BEGIN USART3_MspInit 0 */
+ 173:Src/setup.c   **** 
+ 174:Src/setup.c   ****   /* USER CODE END USART3_MspInit 0 */
+ 175:Src/setup.c   ****     /* USART3 clock enable */
+ 176:Src/setup.c   ****     __HAL_RCC_USART3_CLK_ENABLE();
+ 177:Src/setup.c   ****   
+ 178:Src/setup.c   ****     __HAL_RCC_GPIOB_CLK_ENABLE();
+ 179:Src/setup.c   ****     /**USART3 GPIO Configuration    
+ 180:Src/setup.c   ****     PB10     ------> USART3_TX
+ 181:Src/setup.c   ****     PB11     ------> USART3_RX 
+ 182:Src/setup.c   ****     */
+ 183:Src/setup.c   ****     GPIO_InitStruct.Pin = GPIO_PIN_10;
+ 184:Src/setup.c   ****     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+ 185:Src/setup.c   ****     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+ 186:Src/setup.c   ****     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+ 187:Src/setup.c   **** 
+ 188:Src/setup.c   ****     GPIO_InitStruct.Pin = GPIO_PIN_11;
+ 189:Src/setup.c   ****     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+ 190:Src/setup.c   ****     GPIO_InitStruct.Pull = GPIO_PULLUP;
+ 191:Src/setup.c   ****     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+ 192:Src/setup.c   **** 
+ 193:Src/setup.c   ****     /* USART3 DMA Init */
+ 194:Src/setup.c   ****     /* USART3_RX Init */
+ 195:Src/setup.c   ****     hdma_usart3_rx.Instance = DMA1_Channel3;
+ 196:Src/setup.c   ****     hdma_usart3_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+ 197:Src/setup.c   ****     hdma_usart3_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+ 198:Src/setup.c   ****     hdma_usart3_rx.Init.MemInc = DMA_MINC_ENABLE;
+ 199:Src/setup.c   ****     hdma_usart3_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+ 200:Src/setup.c   ****     hdma_usart3_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+ 201:Src/setup.c   ****     hdma_usart3_rx.Init.Mode = DMA_CIRCULAR;
+ 202:Src/setup.c   ****     hdma_usart3_rx.Init.Priority = DMA_PRIORITY_LOW;
+ 203:Src/setup.c   ****     HAL_DMA_Init(&hdma_usart3_rx);
+ARM GAS  /tmp/ccM5ic1O.s 			page 5
+
+
+ 204:Src/setup.c   ****     __HAL_LINKDMA(uartHandle,hdmarx,hdma_usart3_rx);
+ 205:Src/setup.c   **** 
+ 206:Src/setup.c   ****     /* USART3_TX Init */
+ 207:Src/setup.c   ****     hdma_usart3_tx.Instance = DMA1_Channel2;
+ 208:Src/setup.c   ****     hdma_usart3_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+ 209:Src/setup.c   ****     hdma_usart3_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+ 210:Src/setup.c   ****     hdma_usart3_tx.Init.MemInc = DMA_MINC_ENABLE;
+ 211:Src/setup.c   ****     hdma_usart3_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+ 212:Src/setup.c   ****     hdma_usart3_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+ 213:Src/setup.c   ****     hdma_usart3_tx.Init.Mode = DMA_NORMAL;
+ 214:Src/setup.c   ****     hdma_usart3_tx.Init.Priority = DMA_PRIORITY_LOW;
+ 215:Src/setup.c   ****     HAL_DMA_Init(&hdma_usart3_tx);
+ 216:Src/setup.c   ****     __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart3_tx);
+ 217:Src/setup.c   **** 
+ 218:Src/setup.c   ****     /* USART3 interrupt Init */
+ 219:Src/setup.c   ****     HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
+ 220:Src/setup.c   ****     HAL_NVIC_EnableIRQ(USART3_IRQn);
+ 221:Src/setup.c   ****   /* USER CODE BEGIN USART3_MspInit 1 */
+ 222:Src/setup.c   **** 	__HAL_UART_ENABLE_IT (uartHandle, UART_IT_IDLE);  // Enable the USART IDLE line detection interrup
+ 223:Src/setup.c   ****   /* USER CODE END USART3_MspInit 1 */
+ 224:Src/setup.c   ****   }
+ 225:Src/setup.c   **** }
+ 226:Src/setup.c   **** 
+ 227:Src/setup.c   **** void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
+ 228:Src/setup.c   **** {
+ 229:Src/setup.c   **** 
+ 230:Src/setup.c   ****   if(uartHandle->Instance==USART2)
+ 231:Src/setup.c   ****   {
+ 232:Src/setup.c   ****   /* USER CODE BEGIN USART2_MspDeInit 0 */
+ 233:Src/setup.c   **** 
+ 234:Src/setup.c   ****   /* USER CODE END USART2_MspDeInit 0 */
+ 235:Src/setup.c   ****     /* Peripheral clock disable */
+ 236:Src/setup.c   ****     __HAL_RCC_USART2_CLK_DISABLE();
+ 237:Src/setup.c   ****   
+ 238:Src/setup.c   ****     /**USART2 GPIO Configuration    
+ 239:Src/setup.c   ****     PA2     ------> USART2_TX
+ 240:Src/setup.c   ****     PA3     ------> USART2_RX 
+ 241:Src/setup.c   ****     */
+ 242:Src/setup.c   ****     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2|GPIO_PIN_3);
+ 243:Src/setup.c   **** 
+ 244:Src/setup.c   ****     /* USART2 DMA DeInit */
+ 245:Src/setup.c   ****     HAL_DMA_DeInit(uartHandle->hdmarx);
+ 246:Src/setup.c   ****     HAL_DMA_DeInit(uartHandle->hdmatx);
+ 247:Src/setup.c   **** 
+ 248:Src/setup.c   ****     /* USART2 interrupt Deinit */
+ 249:Src/setup.c   ****     HAL_NVIC_DisableIRQ(USART2_IRQn);
+ 250:Src/setup.c   ****   /* USER CODE BEGIN USART2_MspDeInit 1 */
+ 251:Src/setup.c   **** 
+ 252:Src/setup.c   ****   /* USER CODE END USART2_MspDeInit 1 */
+ 253:Src/setup.c   ****   }
+ 254:Src/setup.c   ****   else if(uartHandle->Instance==USART3)
+ 255:Src/setup.c   ****   {
+ 256:Src/setup.c   ****   /* USER CODE BEGIN USART3_MspDeInit 0 */
+ 257:Src/setup.c   **** 
+ 258:Src/setup.c   ****   /* USER CODE END USART3_MspDeInit 0 */
+ 259:Src/setup.c   ****     /* Peripheral clock disable */
+ 260:Src/setup.c   ****     __HAL_RCC_USART3_CLK_DISABLE();
+ARM GAS  /tmp/ccM5ic1O.s 			page 6
+
+
+ 261:Src/setup.c   ****   
+ 262:Src/setup.c   ****     /**USART3 GPIO Configuration    
+ 263:Src/setup.c   ****     PB10     ------> USART3_TX
+ 264:Src/setup.c   ****     PB11     ------> USART3_RX 
+ 265:Src/setup.c   ****     */
+ 266:Src/setup.c   ****     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_10|GPIO_PIN_11);
+ 267:Src/setup.c   **** 
+ 268:Src/setup.c   ****     /* USART3 DMA DeInit */
+ 269:Src/setup.c   ****     HAL_DMA_DeInit(uartHandle->hdmarx);
+ 270:Src/setup.c   ****     HAL_DMA_DeInit(uartHandle->hdmatx);
+ 271:Src/setup.c   **** 
+ 272:Src/setup.c   ****     /* USART3 interrupt Deinit */
+ 273:Src/setup.c   ****     HAL_NVIC_DisableIRQ(USART3_IRQn);
+ 274:Src/setup.c   ****   /* USER CODE BEGIN USART3_MspDeInit 1 */
+ 275:Src/setup.c   **** 
+ 276:Src/setup.c   ****   /* USER CODE END USART3_MspDeInit 1 */
+ 277:Src/setup.c   ****   }
+ 278:Src/setup.c   **** } 
+ 279:Src/setup.c   **** #endif
+ 280:Src/setup.c   **** 
+ 281:Src/setup.c   **** DMA_HandleTypeDef hdma_i2c2_rx;
+ 282:Src/setup.c   **** DMA_HandleTypeDef hdma_i2c2_tx;
+ 283:Src/setup.c   **** 
+ 284:Src/setup.c   **** void I2C_Init(void)
+ 285:Src/setup.c   **** {
+  27              		.loc 1 285 1 view -0
+  28              		.cfi_startproc
+  29              		@ args = 0, pretend = 0, frame = 24
+  30              		@ frame_needed = 0, uses_anonymous_args = 0
+  31 0000 30B5     		push	{r4, r5, lr}
+  32              	.LCFI0:
+  33              		.cfi_def_cfa_offset 12
+  34              		.cfi_offset 4, -12
+  35              		.cfi_offset 5, -8
+  36              		.cfi_offset 14, -4
+  37 0002 87B0     		sub	sp, sp, #28
+  38              	.LCFI1:
+  39              		.cfi_def_cfa_offset 40
+ 286:Src/setup.c   ****   /* Initialise I2C2 GPIO pins
+ 287:Src/setup.c   ****   *  I2C2 GPIO Configuration
+ 288:Src/setup.c   ****   *  PB10     ------> I2C2_SCL
+ 289:Src/setup.c   ****   *  PB11     ------> I2C2_SDA
+ 290:Src/setup.c   ****   */
+ 291:Src/setup.c   ****   GPIO_InitTypeDef GPIO_InitStruct;
+  40              		.loc 1 291 3 view .LVU1
+ 292:Src/setup.c   ****   __HAL_RCC_GPIOB_CLK_ENABLE();
+  41              		.loc 1 292 3 view .LVU2
+  42              	.LBB2:
+  43              		.loc 1 292 3 view .LVU3
+  44              		.loc 1 292 3 view .LVU4
+  45 0004 1C4C     		ldr	r4, .L3
+  46 0006 A369     		ldr	r3, [r4, #24]
+  47 0008 43F00803 		orr	r3, r3, #8
+  48 000c A361     		str	r3, [r4, #24]
+  49              		.loc 1 292 3 view .LVU5
+  50 000e A369     		ldr	r3, [r4, #24]
+  51 0010 03F00803 		and	r3, r3, #8
+ARM GAS  /tmp/ccM5ic1O.s 			page 7
+
+
+  52 0014 0093     		str	r3, [sp]
+  53              		.loc 1 292 3 view .LVU6
+  54 0016 009B     		ldr	r3, [sp]
+  55              	.LBE2:
+  56              		.loc 1 292 3 view .LVU7
+ 293:Src/setup.c   ****   GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11;
+  57              		.loc 1 293 3 view .LVU8
+  58              		.loc 1 293 23 is_stmt 0 view .LVU9
+  59 0018 4FF44063 		mov	r3, #3072
+  60 001c 0293     		str	r3, [sp, #8]
+ 294:Src/setup.c   ****   GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+  61              		.loc 1 294 3 is_stmt 1 view .LVU10
+  62              		.loc 1 294 24 is_stmt 0 view .LVU11
+  63 001e 1223     		movs	r3, #18
+  64 0020 0393     		str	r3, [sp, #12]
+ 295:Src/setup.c   ****   GPIO_InitStruct.Pull = GPIO_NOPULL;
+  65              		.loc 1 295 3 is_stmt 1 view .LVU12
+  66              		.loc 1 295 24 is_stmt 0 view .LVU13
+  67 0022 0025     		movs	r5, #0
+  68 0024 0495     		str	r5, [sp, #16]
+ 296:Src/setup.c   ****   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  69              		.loc 1 296 3 is_stmt 1 view .LVU14
+  70              		.loc 1 296 25 is_stmt 0 view .LVU15
+  71 0026 0323     		movs	r3, #3
+  72 0028 0593     		str	r3, [sp, #20]
+ 297:Src/setup.c   ****   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  73              		.loc 1 297 3 is_stmt 1 view .LVU16
+  74 002a 02A9     		add	r1, sp, #8
+  75 002c 1348     		ldr	r0, .L3+4
+  76 002e FFF7FEFF 		bl	HAL_GPIO_Init
+  77              	.LVL0:
+ 298:Src/setup.c   **** 
+ 299:Src/setup.c   ****   /* Initialise I2C peripheral */
+ 300:Src/setup.c   ****   __HAL_RCC_I2C2_CLK_ENABLE();
+  78              		.loc 1 300 3 view .LVU17
+  79              	.LBB3:
+  80              		.loc 1 300 3 view .LVU18
+  81              		.loc 1 300 3 view .LVU19
+  82 0032 E369     		ldr	r3, [r4, #28]
+  83 0034 43F48003 		orr	r3, r3, #4194304
+  84 0038 E361     		str	r3, [r4, #28]
+  85              		.loc 1 300 3 view .LVU20
+  86 003a E369     		ldr	r3, [r4, #28]
+  87 003c 03F48003 		and	r3, r3, #4194304
+  88 0040 0193     		str	r3, [sp, #4]
+  89              		.loc 1 300 3 view .LVU21
+  90 0042 019B     		ldr	r3, [sp, #4]
+  91              	.LBE3:
+  92              		.loc 1 300 3 view .LVU22
+ 301:Src/setup.c   ****   hi2c2.Instance = I2C2;
+  93              		.loc 1 301 3 view .LVU23
+  94              		.loc 1 301 18 is_stmt 0 view .LVU24
+  95 0044 0E48     		ldr	r0, .L3+8
+  96 0046 0F4B     		ldr	r3, .L3+12
+  97 0048 0360     		str	r3, [r0]
+ 302:Src/setup.c   ****   hi2c2.Init.ClockSpeed = 200000;
+  98              		.loc 1 302 3 is_stmt 1 view .LVU25
+ARM GAS  /tmp/ccM5ic1O.s 			page 8
+
+
+  99              		.loc 1 302 25 is_stmt 0 view .LVU26
+ 100 004a 0F4B     		ldr	r3, .L3+16
+ 101 004c 4360     		str	r3, [r0, #4]
+ 303:Src/setup.c   ****   hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
+ 102              		.loc 1 303 3 is_stmt 1 view .LVU27
+ 103              		.loc 1 303 24 is_stmt 0 view .LVU28
+ 104 004e 8560     		str	r5, [r0, #8]
+ 304:Src/setup.c   ****   hi2c2.Init.OwnAddress1 = 0;
+ 105              		.loc 1 304 3 is_stmt 1 view .LVU29
+ 106              		.loc 1 304 26 is_stmt 0 view .LVU30
+ 107 0050 C560     		str	r5, [r0, #12]
+ 305:Src/setup.c   ****   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+ 108              		.loc 1 305 3 is_stmt 1 view .LVU31
+ 109              		.loc 1 305 29 is_stmt 0 view .LVU32
+ 110 0052 4FF48043 		mov	r3, #16384
+ 111 0056 0361     		str	r3, [r0, #16]
+ 306:Src/setup.c   ****   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+ 112              		.loc 1 306 3 is_stmt 1 view .LVU33
+ 113              		.loc 1 306 30 is_stmt 0 view .LVU34
+ 114 0058 4561     		str	r5, [r0, #20]
+ 307:Src/setup.c   ****   hi2c2.Init.OwnAddress2 = 0;
+ 115              		.loc 1 307 3 is_stmt 1 view .LVU35
+ 116              		.loc 1 307 26 is_stmt 0 view .LVU36
+ 117 005a 8561     		str	r5, [r0, #24]
+ 308:Src/setup.c   ****   hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+ 118              		.loc 1 308 3 is_stmt 1 view .LVU37
+ 119              		.loc 1 308 30 is_stmt 0 view .LVU38
+ 120 005c C561     		str	r5, [r0, #28]
+ 309:Src/setup.c   ****   hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+ 121              		.loc 1 309 3 is_stmt 1 view .LVU39
+ 122              		.loc 1 309 28 is_stmt 0 view .LVU40
+ 123 005e 0562     		str	r5, [r0, #32]
+ 310:Src/setup.c   ****   __HAL_RCC_I2C2_FORCE_RESET();
+ 124              		.loc 1 310 3 is_stmt 1 view .LVU41
+ 125 0060 2369     		ldr	r3, [r4, #16]
+ 126 0062 43F48003 		orr	r3, r3, #4194304
+ 127 0066 2361     		str	r3, [r4, #16]
+ 311:Src/setup.c   ****   __HAL_RCC_I2C2_RELEASE_RESET();
+ 128              		.loc 1 311 3 view .LVU42
+ 129 0068 2369     		ldr	r3, [r4, #16]
+ 130 006a 23F48003 		bic	r3, r3, #4194304
+ 131 006e 2361     		str	r3, [r4, #16]
+ 312:Src/setup.c   ****   HAL_I2C_Init(&hi2c2);
+ 132              		.loc 1 312 3 view .LVU43
+ 133 0070 FFF7FEFF 		bl	HAL_I2C_Init
+ 134              	.LVL1:
+ 313:Src/setup.c   **** 
+ 314:Src/setup.c   ****   /* Peripheral DMA init*/
+ 315:Src/setup.c   **** /*  __HAL_RCC_DMA1_CLK_ENABLE();
+ 316:Src/setup.c   **** */  
+ 317:Src/setup.c   ****   /* DMA1_Channel4_IRQn interrupt configuration */
+ 318:Src/setup.c   **** /*  HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 1, 4);
+ 319:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
+ 320:Src/setup.c   **** */
+ 321:Src/setup.c   ****   /* DMA1_Channel5_IRQn interrupt configuration */
+ 322:Src/setup.c   **** /*  HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 1, 3);
+ 323:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
+ARM GAS  /tmp/ccM5ic1O.s 			page 9
+
+
+ 324:Src/setup.c   **** */
+ 325:Src/setup.c   **** 
+ 326:Src/setup.c   **** /*  hdma_i2c2_rx.Instance = DMA1_Channel5;
+ 327:Src/setup.c   ****   hdma_i2c2_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+ 328:Src/setup.c   ****   hdma_i2c2_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+ 329:Src/setup.c   ****   hdma_i2c2_rx.Init.MemInc = DMA_MINC_ENABLE;
+ 330:Src/setup.c   ****   hdma_i2c2_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+ 331:Src/setup.c   ****   hdma_i2c2_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+ 332:Src/setup.c   ****   hdma_i2c2_rx.Init.Mode = DMA_NORMAL;
+ 333:Src/setup.c   ****   hdma_i2c2_rx.Init.Priority = DMA_PRIORITY_MEDIUM;
+ 334:Src/setup.c   ****   HAL_DMA_Init(&hdma_i2c2_rx);
+ 335:Src/setup.c   **** 
+ 336:Src/setup.c   ****   __HAL_LINKDMA(&hi2c2,hdmarx,hdma_i2c2_rx);
+ 337:Src/setup.c   **** */
+ 338:Src/setup.c   **** 
+ 339:Src/setup.c   **** /*  hdma_i2c2_tx.Instance = DMA1_Channel4;
+ 340:Src/setup.c   ****   hdma_i2c2_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+ 341:Src/setup.c   ****   hdma_i2c2_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+ 342:Src/setup.c   ****   hdma_i2c2_tx.Init.MemInc = DMA_MINC_ENABLE;
+ 343:Src/setup.c   ****   hdma_i2c2_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+ 344:Src/setup.c   ****   hdma_i2c2_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+ 345:Src/setup.c   ****   hdma_i2c2_tx.Init.Mode = DMA_NORMAL;
+ 346:Src/setup.c   ****   hdma_i2c2_tx.Init.Priority = DMA_PRIORITY_MEDIUM;
+ 347:Src/setup.c   ****   HAL_DMA_Init(&hdma_i2c2_tx);
+ 348:Src/setup.c   **** 
+ 349:Src/setup.c   ****   __HAL_LINKDMA(&hi2c2,hdmatx,hdma_i2c2_tx);
+ 350:Src/setup.c   **** */
+ 351:Src/setup.c   ****   /* Peripheral interrupt init */
+ 352:Src/setup.c   **** /*  HAL_NVIC_SetPriority(I2C2_EV_IRQn, 0, 0);
+ 353:Src/setup.c   ****   HAL_NVIC_EnableIRQ(I2C2_EV_IRQn);
+ 354:Src/setup.c   ****   HAL_NVIC_SetPriority(I2C2_ER_IRQn, 0, 0);
+ 355:Src/setup.c   ****   HAL_NVIC_EnableIRQ(I2C2_ER_IRQn);
+ 356:Src/setup.c   **** */
+ 357:Src/setup.c   **** }
+ 135              		.loc 1 357 1 is_stmt 0 view .LVU44
+ 136 0074 07B0     		add	sp, sp, #28
+ 137              	.LCFI2:
+ 138              		.cfi_def_cfa_offset 12
+ 139              		@ sp needed
+ 140 0076 30BD     		pop	{r4, r5, pc}
+ 141              	.L4:
+ 142              		.align	2
+ 143              	.L3:
+ 144 0078 00100240 		.word	1073876992
+ 145 007c 000C0140 		.word	1073810432
+ 146 0080 00000000 		.word	.LANCHOR0
+ 147 0084 00580040 		.word	1073764352
+ 148 0088 400D0300 		.word	200000
+ 149              		.cfi_endproc
+ 150              	.LFE66:
+ 152              		.section	.text.MX_GPIO_Init,"ax",%progbits
+ 153              		.align	1
+ 154              		.global	MX_GPIO_Init
+ 155              		.syntax unified
+ 156              		.thumb
+ 157              		.thumb_func
+ 158              		.fpu softvfp
+ARM GAS  /tmp/ccM5ic1O.s 			page 10
+
+
+ 160              	MX_GPIO_Init:
+ 161              	.LFB67:
+ 358:Src/setup.c   **** 
+ 359:Src/setup.c   **** void MX_GPIO_Init(void) {
+ 162              		.loc 1 359 25 is_stmt 1 view -0
+ 163              		.cfi_startproc
+ 164              		@ args = 0, pretend = 0, frame = 32
+ 165              		@ frame_needed = 0, uses_anonymous_args = 0
+ 166 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ 167              	.LCFI3:
+ 168              		.cfi_def_cfa_offset 36
+ 169              		.cfi_offset 4, -36
+ 170              		.cfi_offset 5, -32
+ 171              		.cfi_offset 6, -28
+ 172              		.cfi_offset 7, -24
+ 173              		.cfi_offset 8, -20
+ 174              		.cfi_offset 9, -16
+ 175              		.cfi_offset 10, -12
+ 176              		.cfi_offset 11, -8
+ 177              		.cfi_offset 14, -4
+ 178 0004 89B0     		sub	sp, sp, #36
+ 179              	.LCFI4:
+ 180              		.cfi_def_cfa_offset 72
+ 360:Src/setup.c   ****   GPIO_InitTypeDef GPIO_InitStruct;
+ 181              		.loc 1 360 3 view .LVU46
+ 361:Src/setup.c   **** 
+ 362:Src/setup.c   ****   /* GPIO Ports Clock Enable */
+ 363:Src/setup.c   ****   __HAL_RCC_GPIOA_CLK_ENABLE();
+ 182              		.loc 1 363 3 view .LVU47
+ 183              	.LBB4:
+ 184              		.loc 1 363 3 view .LVU48
+ 185              		.loc 1 363 3 view .LVU49
+ 186 0006 8D4B     		ldr	r3, .L7
+ 187 0008 9A69     		ldr	r2, [r3, #24]
+ 188 000a 42F00402 		orr	r2, r2, #4
+ 189 000e 9A61     		str	r2, [r3, #24]
+ 190              		.loc 1 363 3 view .LVU50
+ 191 0010 9A69     		ldr	r2, [r3, #24]
+ 192 0012 02F00402 		and	r2, r2, #4
+ 193 0016 0192     		str	r2, [sp, #4]
+ 194              		.loc 1 363 3 view .LVU51
+ 195 0018 019A     		ldr	r2, [sp, #4]
+ 196              	.LBE4:
+ 197              		.loc 1 363 3 view .LVU52
+ 364:Src/setup.c   ****   __HAL_RCC_GPIOB_CLK_ENABLE();
+ 198              		.loc 1 364 3 view .LVU53
+ 199              	.LBB5:
+ 200              		.loc 1 364 3 view .LVU54
+ 201              		.loc 1 364 3 view .LVU55
+ 202 001a 9A69     		ldr	r2, [r3, #24]
+ 203 001c 42F00802 		orr	r2, r2, #8
+ 204 0020 9A61     		str	r2, [r3, #24]
+ 205              		.loc 1 364 3 view .LVU56
+ 206 0022 9A69     		ldr	r2, [r3, #24]
+ 207 0024 02F00802 		and	r2, r2, #8
+ 208 0028 0292     		str	r2, [sp, #8]
+ 209              		.loc 1 364 3 view .LVU57
+ARM GAS  /tmp/ccM5ic1O.s 			page 11
+
+
+ 210 002a 029A     		ldr	r2, [sp, #8]
+ 211              	.LBE5:
+ 212              		.loc 1 364 3 view .LVU58
+ 365:Src/setup.c   ****   __HAL_RCC_GPIOC_CLK_ENABLE();
+ 213              		.loc 1 365 3 view .LVU59
+ 214              	.LBB6:
+ 215              		.loc 1 365 3 view .LVU60
+ 216              		.loc 1 365 3 view .LVU61
+ 217 002c 9A69     		ldr	r2, [r3, #24]
+ 218 002e 42F01002 		orr	r2, r2, #16
+ 219 0032 9A61     		str	r2, [r3, #24]
+ 220              		.loc 1 365 3 view .LVU62
+ 221 0034 9B69     		ldr	r3, [r3, #24]
+ 222 0036 03F01003 		and	r3, r3, #16
+ 223 003a 0393     		str	r3, [sp, #12]
+ 224              		.loc 1 365 3 view .LVU63
+ 225 003c 039B     		ldr	r3, [sp, #12]
+ 226              	.LBE6:
+ 227              		.loc 1 365 3 view .LVU64
+ 366:Src/setup.c   **** 
+ 367:Src/setup.c   ****   GPIO_InitStruct.Mode  = GPIO_MODE_INPUT;
+ 228              		.loc 1 367 3 view .LVU65
+ 229              		.loc 1 367 25 is_stmt 0 view .LVU66
+ 230 003e 4FF00009 		mov	r9, #0
+ 231 0042 CDF81490 		str	r9, [sp, #20]
+ 368:Src/setup.c   ****   GPIO_InitStruct.Pull  = GPIO_NOPULL;
+ 232              		.loc 1 368 3 is_stmt 1 view .LVU67
+ 233              		.loc 1 368 25 is_stmt 0 view .LVU68
+ 234 0046 CDF81890 		str	r9, [sp, #24]
+ 369:Src/setup.c   ****   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+ 235              		.loc 1 369 3 is_stmt 1 view .LVU69
+ 236              		.loc 1 369 25 is_stmt 0 view .LVU70
+ 237 004a 0227     		movs	r7, #2
+ 238 004c 0797     		str	r7, [sp, #28]
+ 370:Src/setup.c   **** 
+ 371:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_HALL_U_PIN;
+ 239              		.loc 1 371 3 is_stmt 1 view .LVU71
+ 240              		.loc 1 371 23 is_stmt 0 view .LVU72
+ 241 004e 2023     		movs	r3, #32
+ 242 0050 0493     		str	r3, [sp, #16]
+ 372:Src/setup.c   ****   HAL_GPIO_Init(LEFT_HALL_U_PORT, &GPIO_InitStruct);
+ 243              		.loc 1 372 3 is_stmt 1 view .LVU73
+ 244 0052 7B4D     		ldr	r5, .L7+4
+ 245 0054 04A9     		add	r1, sp, #16
+ 246 0056 2846     		mov	r0, r5
+ 247 0058 FFF7FEFF 		bl	HAL_GPIO_Init
+ 248              	.LVL2:
+ 373:Src/setup.c   **** 
+ 374:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_HALL_V_PIN;
+ 249              		.loc 1 374 3 view .LVU74
+ 250              		.loc 1 374 23 is_stmt 0 view .LVU75
+ 251 005c 4022     		movs	r2, #64
+ 252 005e 0492     		str	r2, [sp, #16]
+ 375:Src/setup.c   ****   HAL_GPIO_Init(LEFT_HALL_V_PORT, &GPIO_InitStruct);
+ 253              		.loc 1 375 3 is_stmt 1 view .LVU76
+ 254 0060 04A9     		add	r1, sp, #16
+ 255 0062 2846     		mov	r0, r5
+ARM GAS  /tmp/ccM5ic1O.s 			page 12
+
+
+ 256 0064 FFF7FEFF 		bl	HAL_GPIO_Init
+ 257              	.LVL3:
+ 376:Src/setup.c   **** 
+ 377:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_HALL_W_PIN;
+ 258              		.loc 1 377 3 view .LVU77
+ 259              		.loc 1 377 23 is_stmt 0 view .LVU78
+ 260 0068 4FF0800A 		mov	r10, #128
+ 261 006c CDF810A0 		str	r10, [sp, #16]
+ 378:Src/setup.c   ****   HAL_GPIO_Init(LEFT_HALL_W_PORT, &GPIO_InitStruct);
+ 262              		.loc 1 378 3 is_stmt 1 view .LVU79
+ 263 0070 04A9     		add	r1, sp, #16
+ 264 0072 2846     		mov	r0, r5
+ 265 0074 FFF7FEFF 		bl	HAL_GPIO_Init
+ 266              	.LVL4:
+ 379:Src/setup.c   **** 
+ 380:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_HALL_U_PIN;
+ 267              		.loc 1 380 3 view .LVU80
+ 268              		.loc 1 380 23 is_stmt 0 view .LVU81
+ 269 0078 4FF4806B 		mov	fp, #1024
+ 270 007c CDF810B0 		str	fp, [sp, #16]
+ 381:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_HALL_U_PORT, &GPIO_InitStruct);
+ 271              		.loc 1 381 3 is_stmt 1 view .LVU82
+ 272 0080 704C     		ldr	r4, .L7+8
+ 273 0082 04A9     		add	r1, sp, #16
+ 274 0084 2046     		mov	r0, r4
+ 275 0086 FFF7FEFF 		bl	HAL_GPIO_Init
+ 276              	.LVL5:
+ 382:Src/setup.c   **** 
+ 383:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_HALL_V_PIN;
+ 277              		.loc 1 383 3 view .LVU83
+ 278              		.loc 1 383 23 is_stmt 0 view .LVU84
+ 279 008a 4FF4006A 		mov	r10, #2048
+ 280 008e CDF810A0 		str	r10, [sp, #16]
+ 384:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_HALL_V_PORT, &GPIO_InitStruct);
+ 281              		.loc 1 384 3 is_stmt 1 view .LVU85
+ 282 0092 04A9     		add	r1, sp, #16
+ 283 0094 2046     		mov	r0, r4
+ 284 0096 FFF7FEFF 		bl	HAL_GPIO_Init
+ 285              	.LVL6:
+ 385:Src/setup.c   **** 
+ 386:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_HALL_W_PIN;
+ 286              		.loc 1 386 3 view .LVU86
+ 287              		.loc 1 386 23 is_stmt 0 view .LVU87
+ 288 009a 4FF48056 		mov	r6, #4096
+ 289 009e 0496     		str	r6, [sp, #16]
+ 387:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_HALL_W_PORT, &GPIO_InitStruct);
+ 290              		.loc 1 387 3 is_stmt 1 view .LVU88
+ 291 00a0 04A9     		add	r1, sp, #16
+ 292 00a2 2046     		mov	r0, r4
+ 293 00a4 FFF7FEFF 		bl	HAL_GPIO_Init
+ 294              	.LVL7:
+ 388:Src/setup.c   **** 
+ 389:Src/setup.c   ****   GPIO_InitStruct.Pull = GPIO_PULLUP;
+ 295              		.loc 1 389 3 view .LVU89
+ 296              		.loc 1 389 24 is_stmt 0 view .LVU90
+ 297 00a8 4FF00108 		mov	r8, #1
+ 298 00ac CDF81880 		str	r8, [sp, #24]
+ARM GAS  /tmp/ccM5ic1O.s 			page 13
+
+
+ 390:Src/setup.c   ****   GPIO_InitStruct.Pin = CHARGER_PIN;
+ 299              		.loc 1 390 3 is_stmt 1 view .LVU91
+ 300              		.loc 1 390 23 is_stmt 0 view .LVU92
+ 301 00b0 0496     		str	r6, [sp, #16]
+ 391:Src/setup.c   ****   HAL_GPIO_Init(CHARGER_PORT, &GPIO_InitStruct);
+ 302              		.loc 1 391 3 is_stmt 1 view .LVU93
+ 303 00b2 06F18046 		add	r6, r6, #1073741824
+ 304 00b6 06F57846 		add	r6, r6, #63488
+ 305 00ba 04A9     		add	r1, sp, #16
+ 306 00bc 3046     		mov	r0, r6
+ 307 00be FFF7FEFF 		bl	HAL_GPIO_Init
+ 308              	.LVL8:
+ 392:Src/setup.c   **** 
+ 393:Src/setup.c   ****   #if defined(SUPPORT_BUTTONS_LEFT) || defined(SUPPORT_BUTTONS_RIGHT)
+ 394:Src/setup.c   ****   GPIO_InitStruct.Pin = BUTTON1_PIN;
+ 309              		.loc 1 394 3 view .LVU94
+ 310              		.loc 1 394 23 is_stmt 0 view .LVU95
+ 311 00c2 CDF810B0 		str	fp, [sp, #16]
+ 395:Src/setup.c   ****   HAL_GPIO_Init(BUTTON1_PORT, &GPIO_InitStruct);
+ 312              		.loc 1 395 3 is_stmt 1 view .LVU96
+ 313 00c6 04A9     		add	r1, sp, #16
+ 314 00c8 2846     		mov	r0, r5
+ 315 00ca FFF7FEFF 		bl	HAL_GPIO_Init
+ 316              	.LVL9:
+ 396:Src/setup.c   ****   GPIO_InitStruct.Pin = BUTTON2_PIN;
+ 317              		.loc 1 396 3 view .LVU97
+ 318              		.loc 1 396 23 is_stmt 0 view .LVU98
+ 319 00ce CDF810A0 		str	r10, [sp, #16]
+ 397:Src/setup.c   ****   HAL_GPIO_Init(BUTTON2_PORT, &GPIO_InitStruct);
+ 320              		.loc 1 397 3 is_stmt 1 view .LVU99
+ 321 00d2 04A9     		add	r1, sp, #16
+ 322 00d4 2846     		mov	r0, r5
+ 323 00d6 FFF7FEFF 		bl	HAL_GPIO_Init
+ 324              	.LVL10:
+ 398:Src/setup.c   ****   #endif
+ 399:Src/setup.c   ****   
+ 400:Src/setup.c   **** 
+ 401:Src/setup.c   ****   GPIO_InitStruct.Pull = GPIO_NOPULL;
+ 325              		.loc 1 401 3 view .LVU100
+ 326              		.loc 1 401 24 is_stmt 0 view .LVU101
+ 327 00da CDF81890 		str	r9, [sp, #24]
+ 402:Src/setup.c   **** 
+ 403:Src/setup.c   ****   GPIO_InitStruct.Pin = BUTTON_PIN;
+ 328              		.loc 1 403 3 is_stmt 1 view .LVU102
+ 329              		.loc 1 403 23 is_stmt 0 view .LVU103
+ 330 00de 0497     		str	r7, [sp, #16]
+ 404:Src/setup.c   ****   HAL_GPIO_Init(BUTTON_PORT, &GPIO_InitStruct);
+ 331              		.loc 1 404 3 is_stmt 1 view .LVU104
+ 332 00e0 04A9     		add	r1, sp, #16
+ 333 00e2 3046     		mov	r0, r6
+ 334 00e4 FFF7FEFF 		bl	HAL_GPIO_Init
+ 335              	.LVL11:
+ 405:Src/setup.c   **** 
+ 406:Src/setup.c   **** 
+ 407:Src/setup.c   ****   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+ 336              		.loc 1 407 3 view .LVU105
+ 337              		.loc 1 407 24 is_stmt 0 view .LVU106
+ARM GAS  /tmp/ccM5ic1O.s 			page 14
+
+
+ 338 00e8 CDF81480 		str	r8, [sp, #20]
+ 408:Src/setup.c   **** 
+ 409:Src/setup.c   ****   GPIO_InitStruct.Pin = LED_PIN;
+ 339              		.loc 1 409 3 is_stmt 1 view .LVU107
+ 340              		.loc 1 409 23 is_stmt 0 view .LVU108
+ 341 00ec 4FF00409 		mov	r9, #4
+ 342 00f0 CDF81090 		str	r9, [sp, #16]
+ 410:Src/setup.c   ****   HAL_GPIO_Init(LED_PORT, &GPIO_InitStruct);
+ 343              		.loc 1 410 3 is_stmt 1 view .LVU109
+ 344 00f4 04A9     		add	r1, sp, #16
+ 345 00f6 2846     		mov	r0, r5
+ 346 00f8 FFF7FEFF 		bl	HAL_GPIO_Init
+ 347              	.LVL12:
+ 411:Src/setup.c   **** 
+ 412:Src/setup.c   ****   GPIO_InitStruct.Pin = BUZZER_PIN;
+ 348              		.loc 1 412 3 view .LVU110
+ 349              		.loc 1 412 23 is_stmt 0 view .LVU111
+ 350 00fc 1021     		movs	r1, #16
+ 351 00fe 0491     		str	r1, [sp, #16]
+ 413:Src/setup.c   ****   HAL_GPIO_Init(BUZZER_PORT, &GPIO_InitStruct);
+ 352              		.loc 1 413 3 is_stmt 1 view .LVU112
+ 353 0100 0DEB0100 		add	r0, sp, r1
+ 354 0104 0146     		mov	r1, r0
+ 355 0106 3046     		mov	r0, r6
+ 356 0108 FFF7FEFF 		bl	HAL_GPIO_Init
+ 357              	.LVL13:
+ 414:Src/setup.c   **** 
+ 415:Src/setup.c   ****   GPIO_InitStruct.Pin = OFF_PIN;
+ 358              		.loc 1 415 3 view .LVU113
+ 359              		.loc 1 415 23 is_stmt 0 view .LVU114
+ 360 010c 2023     		movs	r3, #32
+ 361 010e 0493     		str	r3, [sp, #16]
+ 416:Src/setup.c   ****   HAL_GPIO_Init(OFF_PORT, &GPIO_InitStruct);
+ 362              		.loc 1 416 3 is_stmt 1 view .LVU115
+ 363 0110 04A8     		add	r0, sp, #16
+ 364 0112 0146     		mov	r1, r0
+ 365 0114 3046     		mov	r0, r6
+ 366 0116 FFF7FEFF 		bl	HAL_GPIO_Init
+ 367              	.LVL14:
+ 417:Src/setup.c   **** 
+ 418:Src/setup.c   **** 
+ 419:Src/setup.c   ****   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+ 368              		.loc 1 419 3 view .LVU116
+ 369              		.loc 1 419 24 is_stmt 0 view .LVU117
+ 370 011a 0323     		movs	r3, #3
+ 371 011c 0593     		str	r3, [sp, #20]
+ 420:Src/setup.c   **** 
+ 421:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_DC_CUR_PIN;
+ 372              		.loc 1 421 3 is_stmt 1 view .LVU118
+ 373              		.loc 1 421 23 is_stmt 0 view .LVU119
+ 374 011e CDF81080 		str	r8, [sp, #16]
+ 422:Src/setup.c   ****   HAL_GPIO_Init(LEFT_DC_CUR_PORT, &GPIO_InitStruct);
+ 375              		.loc 1 422 3 is_stmt 1 view .LVU120
+ 376 0122 04A8     		add	r0, sp, #16
+ 377 0124 0146     		mov	r1, r0
+ 378 0126 2046     		mov	r0, r4
+ 379 0128 FFF7FEFF 		bl	HAL_GPIO_Init
+ARM GAS  /tmp/ccM5ic1O.s 			page 15
+
+
+ 380              	.LVL15:
+ 423:Src/setup.c   **** 
+ 424:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_U_CUR_PIN;
+ 381              		.loc 1 424 3 view .LVU121
+ 382              		.loc 1 424 23 is_stmt 0 view .LVU122
+ 383 012c CDF81080 		str	r8, [sp, #16]
+ 425:Src/setup.c   ****   HAL_GPIO_Init(LEFT_U_CUR_PORT, &GPIO_InitStruct);
+ 384              		.loc 1 425 3 is_stmt 1 view .LVU123
+ 385 0130 04A8     		add	r0, sp, #16
+ 386 0132 0146     		mov	r1, r0
+ 387 0134 3046     		mov	r0, r6
+ 388 0136 FFF7FEFF 		bl	HAL_GPIO_Init
+ 389              	.LVL16:
+ 426:Src/setup.c   **** 
+ 427:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_V_CUR_PIN;
+ 390              		.loc 1 427 3 view .LVU124
+ 391              		.loc 1 427 23 is_stmt 0 view .LVU125
+ 392 013a 4FF0080A 		mov	r10, #8
+ 393 013e CDF810A0 		str	r10, [sp, #16]
+ 428:Src/setup.c   ****   HAL_GPIO_Init(LEFT_V_CUR_PORT, &GPIO_InitStruct);
+ 394              		.loc 1 428 3 is_stmt 1 view .LVU126
+ 395 0142 04A8     		add	r0, sp, #16
+ 396 0144 0146     		mov	r1, r0
+ 397 0146 2046     		mov	r0, r4
+ 398 0148 FFF7FEFF 		bl	HAL_GPIO_Init
+ 399              	.LVL17:
+ 429:Src/setup.c   **** 
+ 430:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_DC_CUR_PIN;
+ 400              		.loc 1 430 3 view .LVU127
+ 401              		.loc 1 430 23 is_stmt 0 view .LVU128
+ 402 014c 0497     		str	r7, [sp, #16]
+ 431:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_DC_CUR_PORT, &GPIO_InitStruct);
+ 403              		.loc 1 431 3 is_stmt 1 view .LVU129
+ 404 014e 04A8     		add	r0, sp, #16
+ 405 0150 0146     		mov	r1, r0
+ 406 0152 2046     		mov	r0, r4
+ 407 0154 FFF7FEFF 		bl	HAL_GPIO_Init
+ 408              	.LVL18:
+ 432:Src/setup.c   **** 
+ 433:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_U_CUR_PIN;
+ 409              		.loc 1 433 3 view .LVU130
+ 410              		.loc 1 433 23 is_stmt 0 view .LVU131
+ 411 0158 1021     		movs	r1, #16
+ 412 015a 0491     		str	r1, [sp, #16]
+ 434:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_U_CUR_PORT, &GPIO_InitStruct);
+ 413              		.loc 1 434 3 is_stmt 1 view .LVU132
+ 414 015c 6944     		add	r1, sp, r1
+ 415 015e 2046     		mov	r0, r4
+ 416 0160 FFF7FEFF 		bl	HAL_GPIO_Init
+ 417              	.LVL19:
+ 435:Src/setup.c   **** 
+ 436:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_V_CUR_PIN;
+ 418              		.loc 1 436 3 view .LVU133
+ 419              		.loc 1 436 23 is_stmt 0 view .LVU134
+ 420 0164 2023     		movs	r3, #32
+ 421 0166 0493     		str	r3, [sp, #16]
+ 437:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_V_CUR_PORT, &GPIO_InitStruct);
+ARM GAS  /tmp/ccM5ic1O.s 			page 16
+
+
+ 422              		.loc 1 437 3 is_stmt 1 view .LVU135
+ 423 0168 04A9     		add	r1, sp, #16
+ 424 016a 2046     		mov	r0, r4
+ 425 016c FFF7FEFF 		bl	HAL_GPIO_Init
+ 426              	.LVL20:
+ 438:Src/setup.c   **** 
+ 439:Src/setup.c   ****   GPIO_InitStruct.Pin = DCLINK_PIN;
+ 427              		.loc 1 439 3 view .LVU136
+ 428              		.loc 1 439 23 is_stmt 0 view .LVU137
+ 429 0170 CDF81090 		str	r9, [sp, #16]
+ 440:Src/setup.c   ****   HAL_GPIO_Init(DCLINK_PORT, &GPIO_InitStruct);
+ 430              		.loc 1 440 3 is_stmt 1 view .LVU138
+ 431 0174 04A9     		add	r1, sp, #16
+ 432 0176 2046     		mov	r0, r4
+ 433 0178 FFF7FEFF 		bl	HAL_GPIO_Init
+ 434              	.LVL21:
+ 441:Src/setup.c   **** 
+ 442:Src/setup.c   ****   //Analog in
+ 443:Src/setup.c   ****   #if !defined(SUPPORT_BUTTONS_LEFT)
+ 444:Src/setup.c   ****   GPIO_InitStruct.Pin = GPIO_PIN_3;
+ 435              		.loc 1 444 3 view .LVU139
+ 436              		.loc 1 444 23 is_stmt 0 view .LVU140
+ 437 017c CDF810A0 		str	r10, [sp, #16]
+ 445:Src/setup.c   ****   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+ 438              		.loc 1 445 3 is_stmt 1 view .LVU141
+ 439 0180 04A9     		add	r1, sp, #16
+ 440 0182 3046     		mov	r0, r6
+ 441 0184 FFF7FEFF 		bl	HAL_GPIO_Init
+ 442              	.LVL22:
+ 446:Src/setup.c   ****   GPIO_InitStruct.Pin = GPIO_PIN_2;
+ 443              		.loc 1 446 3 view .LVU142
+ 444              		.loc 1 446 23 is_stmt 0 view .LVU143
+ 445 0188 CDF81090 		str	r9, [sp, #16]
+ 447:Src/setup.c   ****   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+ 446              		.loc 1 447 3 is_stmt 1 view .LVU144
+ 447 018c 04A9     		add	r1, sp, #16
+ 448 018e 3046     		mov	r0, r6
+ 449 0190 FFF7FEFF 		bl	HAL_GPIO_Init
+ 450              	.LVL23:
+ 448:Src/setup.c   ****   #endif
+ 449:Src/setup.c   **** 
+ 450:Src/setup.c   ****   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+ 451              		.loc 1 450 3 view .LVU145
+ 452              		.loc 1 450 24 is_stmt 0 view .LVU146
+ 453 0194 0597     		str	r7, [sp, #20]
+ 451:Src/setup.c   **** 
+ 452:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_TIM_UH_PIN;
+ 454              		.loc 1 452 3 is_stmt 1 view .LVU147
+ 455              		.loc 1 452 23 is_stmt 0 view .LVU148
+ 456 0196 4022     		movs	r2, #64
+ 457 0198 0492     		str	r2, [sp, #16]
+ 453:Src/setup.c   ****   HAL_GPIO_Init(LEFT_TIM_UH_PORT, &GPIO_InitStruct);
+ 458              		.loc 1 453 3 is_stmt 1 view .LVU149
+ 459 019a 04A9     		add	r1, sp, #16
+ 460 019c 2046     		mov	r0, r4
+ 461 019e FFF7FEFF 		bl	HAL_GPIO_Init
+ 462              	.LVL24:
+ARM GAS  /tmp/ccM5ic1O.s 			page 17
+
+
+ 454:Src/setup.c   **** 
+ 455:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_TIM_VH_PIN;
+ 463              		.loc 1 455 3 view .LVU150
+ 464              		.loc 1 455 23 is_stmt 0 view .LVU151
+ 465 01a2 4FF0800A 		mov	r10, #128
+ 466 01a6 CDF810A0 		str	r10, [sp, #16]
+ 456:Src/setup.c   ****   HAL_GPIO_Init(LEFT_TIM_VH_PORT, &GPIO_InitStruct);
+ 467              		.loc 1 456 3 is_stmt 1 view .LVU152
+ 468 01aa 04A9     		add	r1, sp, #16
+ 469 01ac 2046     		mov	r0, r4
+ 470 01ae FFF7FEFF 		bl	HAL_GPIO_Init
+ 471              	.LVL25:
+ 457:Src/setup.c   **** 
+ 458:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_TIM_WH_PIN;
+ 472              		.loc 1 458 3 view .LVU153
+ 473              		.loc 1 458 23 is_stmt 0 view .LVU154
+ 474 01b2 4FF48079 		mov	r9, #256
+ 475 01b6 CDF81090 		str	r9, [sp, #16]
+ 459:Src/setup.c   ****   HAL_GPIO_Init(LEFT_TIM_WH_PORT, &GPIO_InitStruct);
+ 476              		.loc 1 459 3 is_stmt 1 view .LVU155
+ 477 01ba 04A9     		add	r1, sp, #16
+ 478 01bc 2046     		mov	r0, r4
+ 479 01be FFF7FEFF 		bl	HAL_GPIO_Init
+ 480              	.LVL26:
+ 460:Src/setup.c   **** 
+ 461:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_TIM_UL_PIN;
+ 481              		.loc 1 461 3 view .LVU156
+ 482              		.loc 1 461 23 is_stmt 0 view .LVU157
+ 483 01c2 CDF810A0 		str	r10, [sp, #16]
+ 462:Src/setup.c   ****   HAL_GPIO_Init(LEFT_TIM_UL_PORT, &GPIO_InitStruct);
+ 484              		.loc 1 462 3 is_stmt 1 view .LVU158
+ 485 01c6 04A9     		add	r1, sp, #16
+ 486 01c8 3046     		mov	r0, r6
+ 487 01ca FFF7FEFF 		bl	HAL_GPIO_Init
+ 488              	.LVL27:
+ 463:Src/setup.c   **** 
+ 464:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_TIM_VL_PIN;
+ 489              		.loc 1 464 3 view .LVU159
+ 490              		.loc 1 464 23 is_stmt 0 view .LVU160
+ 491 01ce CDF81080 		str	r8, [sp, #16]
+ 465:Src/setup.c   ****   HAL_GPIO_Init(LEFT_TIM_VL_PORT, &GPIO_InitStruct);
+ 492              		.loc 1 465 3 is_stmt 1 view .LVU161
+ 493 01d2 04A9     		add	r1, sp, #16
+ 494 01d4 2846     		mov	r0, r5
+ 495 01d6 FFF7FEFF 		bl	HAL_GPIO_Init
+ 496              	.LVL28:
+ 466:Src/setup.c   **** 
+ 467:Src/setup.c   ****   GPIO_InitStruct.Pin = LEFT_TIM_WL_PIN;
+ 497              		.loc 1 467 3 view .LVU162
+ 498              		.loc 1 467 23 is_stmt 0 view .LVU163
+ 499 01da 0497     		str	r7, [sp, #16]
+ 468:Src/setup.c   ****   HAL_GPIO_Init(LEFT_TIM_WL_PORT, &GPIO_InitStruct);
+ 500              		.loc 1 468 3 is_stmt 1 view .LVU164
+ 501 01dc 04A9     		add	r1, sp, #16
+ 502 01de 2846     		mov	r0, r5
+ 503 01e0 FFF7FEFF 		bl	HAL_GPIO_Init
+ 504              	.LVL29:
+ARM GAS  /tmp/ccM5ic1O.s 			page 18
+
+
+ 469:Src/setup.c   **** 
+ 470:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_TIM_UH_PIN;
+ 505              		.loc 1 470 3 view .LVU165
+ 506              		.loc 1 470 23 is_stmt 0 view .LVU166
+ 507 01e4 CDF81090 		str	r9, [sp, #16]
+ 471:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_TIM_UH_PORT, &GPIO_InitStruct);
+ 508              		.loc 1 471 3 is_stmt 1 view .LVU167
+ 509 01e8 04A9     		add	r1, sp, #16
+ 510 01ea 3046     		mov	r0, r6
+ 511 01ec FFF7FEFF 		bl	HAL_GPIO_Init
+ 512              	.LVL30:
+ 472:Src/setup.c   **** 
+ 473:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_TIM_VH_PIN;
+ 513              		.loc 1 473 3 view .LVU168
+ 514              		.loc 1 473 23 is_stmt 0 view .LVU169
+ 515 01f0 4FF40073 		mov	r3, #512
+ 516 01f4 0493     		str	r3, [sp, #16]
+ 474:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_TIM_VH_PORT, &GPIO_InitStruct);
+ 517              		.loc 1 474 3 is_stmt 1 view .LVU170
+ 518 01f6 04A9     		add	r1, sp, #16
+ 519 01f8 3046     		mov	r0, r6
+ 520 01fa FFF7FEFF 		bl	HAL_GPIO_Init
+ 521              	.LVL31:
+ 475:Src/setup.c   **** 
+ 476:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_TIM_WH_PIN;
+ 522              		.loc 1 476 3 view .LVU171
+ 523              		.loc 1 476 23 is_stmt 0 view .LVU172
+ 524 01fe CDF810B0 		str	fp, [sp, #16]
+ 477:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_TIM_WH_PORT, &GPIO_InitStruct);
+ 525              		.loc 1 477 3 is_stmt 1 view .LVU173
+ 526 0202 04A9     		add	r1, sp, #16
+ 527 0204 3046     		mov	r0, r6
+ 528 0206 FFF7FEFF 		bl	HAL_GPIO_Init
+ 529              	.LVL32:
+ 478:Src/setup.c   **** 
+ 479:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_TIM_UL_PIN;
+ 530              		.loc 1 479 3 view .LVU174
+ 531              		.loc 1 479 23 is_stmt 0 view .LVU175
+ 532 020a 4FF40053 		mov	r3, #8192
+ 533 020e 0493     		str	r3, [sp, #16]
+ 480:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_TIM_UL_PORT, &GPIO_InitStruct);
+ 534              		.loc 1 480 3 is_stmt 1 view .LVU176
+ 535 0210 04A9     		add	r1, sp, #16
+ 536 0212 2846     		mov	r0, r5
+ 537 0214 FFF7FEFF 		bl	HAL_GPIO_Init
+ 538              	.LVL33:
+ 481:Src/setup.c   **** 
+ 482:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_TIM_VL_PIN;
+ 539              		.loc 1 482 3 view .LVU177
+ 540              		.loc 1 482 23 is_stmt 0 view .LVU178
+ 541 0218 4FF48043 		mov	r3, #16384
+ 542 021c 0493     		str	r3, [sp, #16]
+ 483:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_TIM_VL_PORT, &GPIO_InitStruct);
+ 543              		.loc 1 483 3 is_stmt 1 view .LVU179
+ 544 021e 04A9     		add	r1, sp, #16
+ 545 0220 2846     		mov	r0, r5
+ 546 0222 FFF7FEFF 		bl	HAL_GPIO_Init
+ARM GAS  /tmp/ccM5ic1O.s 			page 19
+
+
+ 547              	.LVL34:
+ 484:Src/setup.c   **** 
+ 485:Src/setup.c   ****   GPIO_InitStruct.Pin = RIGHT_TIM_WL_PIN;
+ 548              		.loc 1 485 3 view .LVU180
+ 549              		.loc 1 485 23 is_stmt 0 view .LVU181
+ 550 0226 4FF40043 		mov	r3, #32768
+ 551 022a 0493     		str	r3, [sp, #16]
+ 486:Src/setup.c   ****   HAL_GPIO_Init(RIGHT_TIM_WL_PORT, &GPIO_InitStruct);
+ 552              		.loc 1 486 3 is_stmt 1 view .LVU182
+ 553 022c 04A9     		add	r1, sp, #16
+ 554 022e 2846     		mov	r0, r5
+ 555 0230 FFF7FEFF 		bl	HAL_GPIO_Init
+ 556              	.LVL35:
+ 487:Src/setup.c   **** }
+ 557              		.loc 1 487 1 is_stmt 0 view .LVU183
+ 558 0234 09B0     		add	sp, sp, #36
+ 559              	.LCFI5:
+ 560              		.cfi_def_cfa_offset 36
+ 561              		@ sp needed
+ 562 0236 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 563              	.L8:
+ 564 023a 00BF     		.align	2
+ 565              	.L7:
+ 566 023c 00100240 		.word	1073876992
+ 567 0240 000C0140 		.word	1073810432
+ 568 0244 00100140 		.word	1073811456
+ 569              		.cfi_endproc
+ 570              	.LFE67:
+ 572              		.section	.text.MX_TIM_Init,"ax",%progbits
+ 573              		.align	1
+ 574              		.global	MX_TIM_Init
+ 575              		.syntax unified
+ 576              		.thumb
+ 577              		.thumb_func
+ 578              		.fpu softvfp
+ 580              	MX_TIM_Init:
+ 581              	.LFB68:
+ 488:Src/setup.c   **** 
+ 489:Src/setup.c   **** void MX_TIM_Init(void) {
+ 582              		.loc 1 489 24 is_stmt 1 view -0
+ 583              		.cfi_startproc
+ 584              		@ args = 0, pretend = 0, frame = 96
+ 585              		@ frame_needed = 0, uses_anonymous_args = 0
+ 586 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ 587              	.LCFI6:
+ 588              		.cfi_def_cfa_offset 36
+ 589              		.cfi_offset 4, -36
+ 590              		.cfi_offset 5, -32
+ 591              		.cfi_offset 6, -28
+ 592              		.cfi_offset 7, -24
+ 593              		.cfi_offset 8, -20
+ 594              		.cfi_offset 9, -16
+ 595              		.cfi_offset 10, -12
+ 596              		.cfi_offset 11, -8
+ 597              		.cfi_offset 14, -4
+ 598 0004 99B0     		sub	sp, sp, #100
+ 599              	.LCFI7:
+ARM GAS  /tmp/ccM5ic1O.s 			page 20
+
+
+ 600              		.cfi_def_cfa_offset 136
+ 490:Src/setup.c   ****   __HAL_RCC_TIM1_CLK_ENABLE();
+ 601              		.loc 1 490 3 view .LVU185
+ 602              	.LBB7:
+ 603              		.loc 1 490 3 view .LVU186
+ 604              		.loc 1 490 3 view .LVU187
+ 605 0006 7B4B     		ldr	r3, .L11
+ 606 0008 9A69     		ldr	r2, [r3, #24]
+ 607 000a 42F40062 		orr	r2, r2, #2048
+ 608 000e 9A61     		str	r2, [r3, #24]
+ 609              		.loc 1 490 3 view .LVU188
+ 610 0010 9A69     		ldr	r2, [r3, #24]
+ 611 0012 02F40062 		and	r2, r2, #2048
+ 612 0016 0192     		str	r2, [sp, #4]
+ 613              		.loc 1 490 3 view .LVU189
+ 614 0018 019A     		ldr	r2, [sp, #4]
+ 615              	.LBE7:
+ 616              		.loc 1 490 3 view .LVU190
+ 491:Src/setup.c   ****   __HAL_RCC_TIM8_CLK_ENABLE();
+ 617              		.loc 1 491 3 view .LVU191
+ 618              	.LBB8:
+ 619              		.loc 1 491 3 view .LVU192
+ 620              		.loc 1 491 3 view .LVU193
+ 621 001a 9A69     		ldr	r2, [r3, #24]
+ 622 001c 42F40052 		orr	r2, r2, #8192
+ 623 0020 9A61     		str	r2, [r3, #24]
+ 624              		.loc 1 491 3 view .LVU194
+ 625 0022 9B69     		ldr	r3, [r3, #24]
+ 626 0024 03F40053 		and	r3, r3, #8192
+ 627 0028 0293     		str	r3, [sp, #8]
+ 628              		.loc 1 491 3 view .LVU195
+ 629 002a 029B     		ldr	r3, [sp, #8]
+ 630              	.LBE8:
+ 631              		.loc 1 491 3 view .LVU196
+ 492:Src/setup.c   **** 
+ 493:Src/setup.c   ****   TIM_MasterConfigTypeDef sMasterConfig;
+ 632              		.loc 1 493 3 view .LVU197
+ 494:Src/setup.c   ****   TIM_OC_InitTypeDef sConfigOC;
+ 633              		.loc 1 494 3 view .LVU198
+ 495:Src/setup.c   ****   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig;
+ 634              		.loc 1 495 3 view .LVU199
+ 496:Src/setup.c   ****   TIM_SlaveConfigTypeDef sTimConfig;
+ 635              		.loc 1 496 3 view .LVU200
+ 497:Src/setup.c   **** 
+ 498:Src/setup.c   ****   htim_right.Instance               = RIGHT_TIM;
+ 636              		.loc 1 498 3 view .LVU201
+ 637              		.loc 1 498 37 is_stmt 0 view .LVU202
+ 638 002c 724E     		ldr	r6, .L11+4
+ 639 002e DFF8CC91 		ldr	r9, .L11+8
+ 640 0032 C6F80090 		str	r9, [r6]
+ 499:Src/setup.c   ****   htim_right.Init.Prescaler         = 0;
+ 641              		.loc 1 499 3 is_stmt 1 view .LVU203
+ 642              		.loc 1 499 37 is_stmt 0 view .LVU204
+ 643 0036 0024     		movs	r4, #0
+ 644 0038 7460     		str	r4, [r6, #4]
+ 500:Src/setup.c   ****   htim_right.Init.CounterMode       = TIM_COUNTERMODE_CENTERALIGNED1;
+ 645              		.loc 1 500 3 is_stmt 1 view .LVU205
+ARM GAS  /tmp/ccM5ic1O.s 			page 21
+
+
+ 646              		.loc 1 500 37 is_stmt 0 view .LVU206
+ 647 003a 4FF0200A 		mov	r10, #32
+ 648 003e C6F808A0 		str	r10, [r6, #8]
+ 501:Src/setup.c   ****   htim_right.Init.Period            = 64000000 / 2 / PWM_FREQ;
+ 649              		.loc 1 501 3 is_stmt 1 view .LVU207
+ 650              		.loc 1 501 37 is_stmt 0 view .LVU208
+ 651 0042 4FF4FA6B 		mov	fp, #2000
+ 652 0046 C6F80CB0 		str	fp, [r6, #12]
+ 502:Src/setup.c   ****   htim_right.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+ 653              		.loc 1 502 3 is_stmt 1 view .LVU209
+ 654              		.loc 1 502 37 is_stmt 0 view .LVU210
+ 655 004a 3461     		str	r4, [r6, #16]
+ 503:Src/setup.c   ****   htim_right.Init.RepetitionCounter = 0;
+ 656              		.loc 1 503 3 is_stmt 1 view .LVU211
+ 657              		.loc 1 503 37 is_stmt 0 view .LVU212
+ 658 004c 7461     		str	r4, [r6, #20]
+ 504:Src/setup.c   ****   htim_right.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+ 659              		.loc 1 504 3 is_stmt 1 view .LVU213
+ 660              		.loc 1 504 37 is_stmt 0 view .LVU214
+ 661 004e B461     		str	r4, [r6, #24]
+ 505:Src/setup.c   ****   HAL_TIM_PWM_Init(&htim_right);
+ 662              		.loc 1 505 3 is_stmt 1 view .LVU215
+ 663 0050 3046     		mov	r0, r6
+ 664 0052 FFF7FEFF 		bl	HAL_TIM_PWM_Init
+ 665              	.LVL36:
+ 506:Src/setup.c   **** 
+ 507:Src/setup.c   ****   sMasterConfig.MasterOutputTrigger = TIM_TRGO_ENABLE;
+ 666              		.loc 1 507 3 view .LVU216
+ 667              		.loc 1 507 37 is_stmt 0 view .LVU217
+ 668 0056 1023     		movs	r3, #16
+ 669 0058 1693     		str	r3, [sp, #88]
+ 508:Src/setup.c   ****   sMasterConfig.MasterSlaveMode     = TIM_MASTERSLAVEMODE_DISABLE;
+ 670              		.loc 1 508 3 is_stmt 1 view .LVU218
+ 671              		.loc 1 508 37 is_stmt 0 view .LVU219
+ 672 005a 1794     		str	r4, [sp, #92]
+ 509:Src/setup.c   ****   HAL_TIMEx_MasterConfigSynchronization(&htim_right, &sMasterConfig);
+ 673              		.loc 1 509 3 is_stmt 1 view .LVU220
+ 674 005c 16A9     		add	r1, sp, #88
+ 675 005e 3046     		mov	r0, r6
+ 676 0060 FFF7FEFF 		bl	HAL_TIMEx_MasterConfigSynchronization
+ 677              	.LVL37:
+ 510:Src/setup.c   **** 
+ 511:Src/setup.c   ****   sConfigOC.OCMode       = TIM_OCMODE_PWM1;
+ 678              		.loc 1 511 3 view .LVU221
+ 679              		.loc 1 511 26 is_stmt 0 view .LVU222
+ 680 0064 6023     		movs	r3, #96
+ 681 0066 0F93     		str	r3, [sp, #60]
+ 512:Src/setup.c   ****   sConfigOC.Pulse        = 0;
+ 682              		.loc 1 512 3 is_stmt 1 view .LVU223
+ 683              		.loc 1 512 26 is_stmt 0 view .LVU224
+ 684 0068 1094     		str	r4, [sp, #64]
+ 513:Src/setup.c   ****   sConfigOC.OCPolarity   = TIM_OCPOLARITY_HIGH;
+ 685              		.loc 1 513 3 is_stmt 1 view .LVU225
+ 686              		.loc 1 513 26 is_stmt 0 view .LVU226
+ 687 006a 1194     		str	r4, [sp, #68]
+ 514:Src/setup.c   ****   sConfigOC.OCNPolarity  = TIM_OCNPOLARITY_LOW;
+ 688              		.loc 1 514 3 is_stmt 1 view .LVU227
+ARM GAS  /tmp/ccM5ic1O.s 			page 22
+
+
+ 689              		.loc 1 514 26 is_stmt 0 view .LVU228
+ 690 006c 0827     		movs	r7, #8
+ 691 006e 1297     		str	r7, [sp, #72]
+ 515:Src/setup.c   ****   sConfigOC.OCFastMode   = TIM_OCFAST_DISABLE;
+ 692              		.loc 1 515 3 is_stmt 1 view .LVU229
+ 693              		.loc 1 515 26 is_stmt 0 view .LVU230
+ 694 0070 1394     		str	r4, [sp, #76]
+ 516:Src/setup.c   ****   sConfigOC.OCIdleState  = TIM_OCIDLESTATE_RESET;
+ 695              		.loc 1 516 3 is_stmt 1 view .LVU231
+ 696              		.loc 1 516 26 is_stmt 0 view .LVU232
+ 697 0072 1494     		str	r4, [sp, #80]
+ 517:Src/setup.c   ****   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_SET;
+ 698              		.loc 1 517 3 is_stmt 1 view .LVU233
+ 699              		.loc 1 517 26 is_stmt 0 view .LVU234
+ 700 0074 4FF40072 		mov	r2, #512
+ 701 0078 1592     		str	r2, [sp, #84]
+ 518:Src/setup.c   ****   HAL_TIM_PWM_ConfigChannel(&htim_right, &sConfigOC, TIM_CHANNEL_1);
+ 702              		.loc 1 518 3 is_stmt 1 view .LVU235
+ 703 007a 2246     		mov	r2, r4
+ 704 007c 0FA9     		add	r1, sp, #60
+ 705 007e 3046     		mov	r0, r6
+ 706 0080 FFF7FEFF 		bl	HAL_TIM_PWM_ConfigChannel
+ 707              	.LVL38:
+ 519:Src/setup.c   ****   HAL_TIM_PWM_ConfigChannel(&htim_right, &sConfigOC, TIM_CHANNEL_2);
+ 708              		.loc 1 519 3 view .LVU236
+ 709 0084 0422     		movs	r2, #4
+ 710 0086 0FA9     		add	r1, sp, #60
+ 711 0088 3046     		mov	r0, r6
+ 712 008a FFF7FEFF 		bl	HAL_TIM_PWM_ConfigChannel
+ 713              	.LVL39:
+ 520:Src/setup.c   ****   HAL_TIM_PWM_ConfigChannel(&htim_right, &sConfigOC, TIM_CHANNEL_3);
+ 714              		.loc 1 520 3 view .LVU237
+ 715 008e 3A46     		mov	r2, r7
+ 716 0090 0FA9     		add	r1, sp, #60
+ 717 0092 3046     		mov	r0, r6
+ 718 0094 FFF7FEFF 		bl	HAL_TIM_PWM_ConfigChannel
+ 719              	.LVL40:
+ 521:Src/setup.c   **** 
+ 522:Src/setup.c   ****   sBreakDeadTimeConfig.OffStateRunMode  = TIM_OSSR_ENABLE;
+ 720              		.loc 1 522 3 view .LVU238
+ 721              		.loc 1 522 41 is_stmt 0 view .LVU239
+ 722 0098 4FF40061 		mov	r1, #2048
+ 723 009c 0891     		str	r1, [sp, #32]
+ 523:Src/setup.c   ****   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_ENABLE;
+ 724              		.loc 1 523 3 is_stmt 1 view .LVU240
+ 725              		.loc 1 523 41 is_stmt 0 view .LVU241
+ 726 009e 4FF48060 		mov	r0, #1024
+ 727 00a2 0990     		str	r0, [sp, #36]
+ 524:Src/setup.c   ****   sBreakDeadTimeConfig.LockLevel        = TIM_LOCKLEVEL_OFF;
+ 728              		.loc 1 524 3 is_stmt 1 view .LVU242
+ 729              		.loc 1 524 41 is_stmt 0 view .LVU243
+ 730 00a4 0A94     		str	r4, [sp, #40]
+ 525:Src/setup.c   ****   sBreakDeadTimeConfig.DeadTime         = DEAD_TIME;
+ 731              		.loc 1 525 3 is_stmt 1 view .LVU244
+ 732              		.loc 1 525 41 is_stmt 0 view .LVU245
+ 733 00a6 3025     		movs	r5, #48
+ 734 00a8 0B95     		str	r5, [sp, #44]
+ARM GAS  /tmp/ccM5ic1O.s 			page 23
+
+
+ 526:Src/setup.c   ****   sBreakDeadTimeConfig.BreakState       = TIM_BREAK_DISABLE;
+ 735              		.loc 1 526 3 is_stmt 1 view .LVU246
+ 736              		.loc 1 526 41 is_stmt 0 view .LVU247
+ 737 00aa 0C94     		str	r4, [sp, #48]
+ 527:Src/setup.c   ****   sBreakDeadTimeConfig.BreakPolarity    = TIM_BREAKPOLARITY_LOW;
+ 738              		.loc 1 527 3 is_stmt 1 view .LVU248
+ 739              		.loc 1 527 41 is_stmt 0 view .LVU249
+ 740 00ac 0D94     		str	r4, [sp, #52]
+ 528:Src/setup.c   ****   sBreakDeadTimeConfig.AutomaticOutput  = TIM_AUTOMATICOUTPUT_DISABLE;
+ 741              		.loc 1 528 3 is_stmt 1 view .LVU250
+ 742              		.loc 1 528 41 is_stmt 0 view .LVU251
+ 743 00ae 0E94     		str	r4, [sp, #56]
+ 529:Src/setup.c   ****   HAL_TIMEx_ConfigBreakDeadTime(&htim_right, &sBreakDeadTimeConfig);
+ 744              		.loc 1 529 3 is_stmt 1 view .LVU252
+ 745 00b0 0DEB0A0C 		add	ip, sp, r10
+ 746 00b4 6146     		mov	r1, ip
+ 747 00b6 3046     		mov	r0, r6
+ 748 00b8 FFF7FEFF 		bl	HAL_TIMEx_ConfigBreakDeadTime
+ 749              	.LVL41:
+ 530:Src/setup.c   **** 
+ 531:Src/setup.c   ****   htim_left.Instance               = LEFT_TIM;
+ 750              		.loc 1 531 3 view .LVU253
+ 751              		.loc 1 531 36 is_stmt 0 view .LVU254
+ 752 00bc 504D     		ldr	r5, .L11+12
+ 753 00be DFF84481 		ldr	r8, .L11+16
+ 754 00c2 C5F80080 		str	r8, [r5]
+ 532:Src/setup.c   ****   htim_left.Init.Prescaler         = 0;
+ 755              		.loc 1 532 3 is_stmt 1 view .LVU255
+ 756              		.loc 1 532 36 is_stmt 0 view .LVU256
+ 757 00c6 6C60     		str	r4, [r5, #4]
+ 533:Src/setup.c   ****   htim_left.Init.CounterMode       = TIM_COUNTERMODE_CENTERALIGNED1;
+ 758              		.loc 1 533 3 is_stmt 1 view .LVU257
+ 759              		.loc 1 533 36 is_stmt 0 view .LVU258
+ 760 00c8 C5F808A0 		str	r10, [r5, #8]
+ 534:Src/setup.c   ****   htim_left.Init.Period            = 64000000 / 2 / PWM_FREQ;
+ 761              		.loc 1 534 3 is_stmt 1 view .LVU259
+ 762              		.loc 1 534 36 is_stmt 0 view .LVU260
+ 763 00cc C5F80CB0 		str	fp, [r5, #12]
+ 535:Src/setup.c   ****   htim_left.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+ 764              		.loc 1 535 3 is_stmt 1 view .LVU261
+ 765              		.loc 1 535 36 is_stmt 0 view .LVU262
+ 766 00d0 2C61     		str	r4, [r5, #16]
+ 536:Src/setup.c   ****   htim_left.Init.RepetitionCounter = 0;
+ 767              		.loc 1 536 3 is_stmt 1 view .LVU263
+ 768              		.loc 1 536 36 is_stmt 0 view .LVU264
+ 769 00d2 6C61     		str	r4, [r5, #20]
+ 537:Src/setup.c   ****   htim_left.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+ 770              		.loc 1 537 3 is_stmt 1 view .LVU265
+ 771              		.loc 1 537 36 is_stmt 0 view .LVU266
+ 772 00d4 AC61     		str	r4, [r5, #24]
+ 538:Src/setup.c   ****   HAL_TIM_PWM_Init(&htim_left);
+ 773              		.loc 1 538 3 is_stmt 1 view .LVU267
+ 774 00d6 2846     		mov	r0, r5
+ 775 00d8 FFF7FEFF 		bl	HAL_TIM_PWM_Init
+ 776              	.LVL42:
+ 539:Src/setup.c   **** 
+ 540:Src/setup.c   ****   sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+ARM GAS  /tmp/ccM5ic1O.s 			page 24
+
+
+ 777              		.loc 1 540 3 view .LVU268
+ 778              		.loc 1 540 37 is_stmt 0 view .LVU269
+ 779 00dc CDF858A0 		str	r10, [sp, #88]
+ 541:Src/setup.c   ****   sMasterConfig.MasterSlaveMode     = TIM_MASTERSLAVEMODE_ENABLE;
+ 780              		.loc 1 541 3 is_stmt 1 view .LVU270
+ 781              		.loc 1 541 37 is_stmt 0 view .LVU271
+ 782 00e0 8023     		movs	r3, #128
+ 783 00e2 1793     		str	r3, [sp, #92]
+ 542:Src/setup.c   ****   HAL_TIMEx_MasterConfigSynchronization(&htim_left, &sMasterConfig);
+ 784              		.loc 1 542 3 is_stmt 1 view .LVU272
+ 785 00e4 0DF1580C 		add	ip, sp, #88
+ 786 00e8 6146     		mov	r1, ip
+ 787 00ea 2846     		mov	r0, r5
+ 788 00ec FFF7FEFF 		bl	HAL_TIMEx_MasterConfigSynchronization
+ 789              	.LVL43:
+ 543:Src/setup.c   **** 
+ 544:Src/setup.c   ****   sTimConfig.InputTrigger = TIM_TS_ITR0;
+ 790              		.loc 1 544 3 view .LVU273
+ 791              		.loc 1 544 27 is_stmt 0 view .LVU274
+ 792 00f0 0494     		str	r4, [sp, #16]
+ 545:Src/setup.c   ****   sTimConfig.SlaveMode    = TIM_SLAVEMODE_GATED;
+ 793              		.loc 1 545 3 is_stmt 1 view .LVU275
+ 794              		.loc 1 545 27 is_stmt 0 view .LVU276
+ 795 00f2 0523     		movs	r3, #5
+ 796 00f4 0393     		str	r3, [sp, #12]
+ 546:Src/setup.c   ****   HAL_TIM_SlaveConfigSynchronization(&htim_left, &sTimConfig);
+ 797              		.loc 1 546 3 is_stmt 1 view .LVU277
+ 798 00f6 03A9     		add	r1, sp, #12
+ 799 00f8 2846     		mov	r0, r5
+ 800 00fa FFF7FEFF 		bl	HAL_TIM_SlaveConfigSynchronization
+ 801              	.LVL44:
+ 547:Src/setup.c   **** 
+ 548:Src/setup.c   ****   // Start counting >0 to effectively offset timers by the time it takes for one ADC conversion to 
+ 549:Src/setup.c   ****   // This method allows that the Phase currents ADC measurements are properly aligned with LOW-FET 
+ 550:Src/setup.c   ****   LEFT_TIM->CNT 		     = ADC_TOTAL_CONV_TIME;
+ 802              		.loc 1 550 3 view .LVU278
+ 803              		.loc 1 550 24 is_stmt 0 view .LVU279
+ 804 00fe 5023     		movs	r3, #80
+ 805 0100 C8F82430 		str	r3, [r8, #36]
+ 551:Src/setup.c   **** 
+ 552:Src/setup.c   ****   sConfigOC.OCMode       = TIM_OCMODE_PWM1;
+ 806              		.loc 1 552 3 is_stmt 1 view .LVU280
+ 807              		.loc 1 552 26 is_stmt 0 view .LVU281
+ 808 0104 6023     		movs	r3, #96
+ 809 0106 0F93     		str	r3, [sp, #60]
+ 553:Src/setup.c   ****   sConfigOC.Pulse        = 0;
+ 810              		.loc 1 553 3 is_stmt 1 view .LVU282
+ 811              		.loc 1 553 26 is_stmt 0 view .LVU283
+ 812 0108 1094     		str	r4, [sp, #64]
+ 554:Src/setup.c   ****   sConfigOC.OCPolarity   = TIM_OCPOLARITY_HIGH;
+ 813              		.loc 1 554 3 is_stmt 1 view .LVU284
+ 814              		.loc 1 554 26 is_stmt 0 view .LVU285
+ 815 010a 1194     		str	r4, [sp, #68]
+ 555:Src/setup.c   ****   sConfigOC.OCNPolarity  = TIM_OCNPOLARITY_LOW;
+ 816              		.loc 1 555 3 is_stmt 1 view .LVU286
+ 817              		.loc 1 555 26 is_stmt 0 view .LVU287
+ 818 010c 1297     		str	r7, [sp, #72]
+ARM GAS  /tmp/ccM5ic1O.s 			page 25
+
+
+ 556:Src/setup.c   ****   sConfigOC.OCFastMode   = TIM_OCFAST_DISABLE;
+ 819              		.loc 1 556 3 is_stmt 1 view .LVU288
+ 820              		.loc 1 556 26 is_stmt 0 view .LVU289
+ 821 010e 1394     		str	r4, [sp, #76]
+ 557:Src/setup.c   ****   sConfigOC.OCIdleState  = TIM_OCIDLESTATE_RESET;
+ 822              		.loc 1 557 3 is_stmt 1 view .LVU290
+ 823              		.loc 1 557 26 is_stmt 0 view .LVU291
+ 824 0110 1494     		str	r4, [sp, #80]
+ 558:Src/setup.c   ****   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_SET;
+ 825              		.loc 1 558 3 is_stmt 1 view .LVU292
+ 826              		.loc 1 558 26 is_stmt 0 view .LVU293
+ 827 0112 4FF40072 		mov	r2, #512
+ 828 0116 1592     		str	r2, [sp, #84]
+ 559:Src/setup.c   ****   HAL_TIM_PWM_ConfigChannel(&htim_left, &sConfigOC, TIM_CHANNEL_1);
+ 829              		.loc 1 559 3 is_stmt 1 view .LVU294
+ 830 0118 2246     		mov	r2, r4
+ 831 011a 0DF13C0C 		add	ip, sp, #60
+ 832 011e 6146     		mov	r1, ip
+ 833 0120 2846     		mov	r0, r5
+ 834 0122 FFF7FEFF 		bl	HAL_TIM_PWM_ConfigChannel
+ 835              	.LVL45:
+ 560:Src/setup.c   ****   HAL_TIM_PWM_ConfigChannel(&htim_left, &sConfigOC, TIM_CHANNEL_2);
+ 836              		.loc 1 560 3 view .LVU295
+ 837 0126 0422     		movs	r2, #4
+ 838 0128 0DF13C0C 		add	ip, sp, #60
+ 839 012c 6146     		mov	r1, ip
+ 840 012e 2846     		mov	r0, r5
+ 841 0130 FFF7FEFF 		bl	HAL_TIM_PWM_ConfigChannel
+ 842              	.LVL46:
+ 561:Src/setup.c   ****   HAL_TIM_PWM_ConfigChannel(&htim_left, &sConfigOC, TIM_CHANNEL_3);
+ 843              		.loc 1 561 3 view .LVU296
+ 844 0134 3A46     		mov	r2, r7
+ 845 0136 0DF13C0C 		add	ip, sp, #60
+ 846 013a 6146     		mov	r1, ip
+ 847 013c 2846     		mov	r0, r5
+ 848 013e FFF7FEFF 		bl	HAL_TIM_PWM_ConfigChannel
+ 849              	.LVL47:
+ 562:Src/setup.c   **** 
+ 563:Src/setup.c   ****   sBreakDeadTimeConfig.OffStateRunMode  = TIM_OSSR_ENABLE;
+ 850              		.loc 1 563 3 view .LVU297
+ 851              		.loc 1 563 41 is_stmt 0 view .LVU298
+ 852 0142 4FF40061 		mov	r1, #2048
+ 853 0146 0891     		str	r1, [sp, #32]
+ 564:Src/setup.c   ****   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_ENABLE;
+ 854              		.loc 1 564 3 is_stmt 1 view .LVU299
+ 855              		.loc 1 564 41 is_stmt 0 view .LVU300
+ 856 0148 4FF48060 		mov	r0, #1024
+ 857 014c 0990     		str	r0, [sp, #36]
+ 565:Src/setup.c   ****   sBreakDeadTimeConfig.LockLevel        = TIM_LOCKLEVEL_OFF;
+ 858              		.loc 1 565 3 is_stmt 1 view .LVU301
+ 859              		.loc 1 565 41 is_stmt 0 view .LVU302
+ 860 014e 0A94     		str	r4, [sp, #40]
+ 566:Src/setup.c   ****   sBreakDeadTimeConfig.DeadTime         = DEAD_TIME;
+ 861              		.loc 1 566 3 is_stmt 1 view .LVU303
+ 862              		.loc 1 566 41 is_stmt 0 view .LVU304
+ 863 0150 3023     		movs	r3, #48
+ 864 0152 0B93     		str	r3, [sp, #44]
+ARM GAS  /tmp/ccM5ic1O.s 			page 26
+
+
+ 567:Src/setup.c   ****   sBreakDeadTimeConfig.BreakState       = TIM_BREAK_DISABLE;
+ 865              		.loc 1 567 3 is_stmt 1 view .LVU305
+ 866              		.loc 1 567 41 is_stmt 0 view .LVU306
+ 867 0154 0C94     		str	r4, [sp, #48]
+ 568:Src/setup.c   ****   sBreakDeadTimeConfig.BreakPolarity    = TIM_BREAKPOLARITY_LOW;
+ 868              		.loc 1 568 3 is_stmt 1 view .LVU307
+ 869              		.loc 1 568 41 is_stmt 0 view .LVU308
+ 870 0156 0D94     		str	r4, [sp, #52]
+ 569:Src/setup.c   ****   sBreakDeadTimeConfig.AutomaticOutput  = TIM_AUTOMATICOUTPUT_DISABLE;
+ 871              		.loc 1 569 3 is_stmt 1 view .LVU309
+ 872              		.loc 1 569 41 is_stmt 0 view .LVU310
+ 873 0158 0E94     		str	r4, [sp, #56]
+ 570:Src/setup.c   ****   HAL_TIMEx_ConfigBreakDeadTime(&htim_left, &sBreakDeadTimeConfig);
+ 874              		.loc 1 570 3 is_stmt 1 view .LVU311
+ 875 015a 0DEB0A01 		add	r1, sp, r10
+ 876 015e 2846     		mov	r0, r5
+ 877 0160 FFF7FEFF 		bl	HAL_TIMEx_ConfigBreakDeadTime
+ 878              	.LVL48:
+ 571:Src/setup.c   **** 
+ 572:Src/setup.c   ****   LEFT_TIM->BDTR &= ~TIM_BDTR_MOE;
+ 879              		.loc 1 572 3 view .LVU312
+ 880              		.loc 1 572 18 is_stmt 0 view .LVU313
+ 881 0164 D8F84430 		ldr	r3, [r8, #68]
+ 882 0168 23F40043 		bic	r3, r3, #32768
+ 883 016c C8F84430 		str	r3, [r8, #68]
+ 573:Src/setup.c   ****   RIGHT_TIM->BDTR &= ~TIM_BDTR_MOE;
+ 884              		.loc 1 573 3 is_stmt 1 view .LVU314
+ 885              		.loc 1 573 19 is_stmt 0 view .LVU315
+ 886 0170 D9F84430 		ldr	r3, [r9, #68]
+ 887 0174 23F40043 		bic	r3, r3, #32768
+ 888 0178 C9F84430 		str	r3, [r9, #68]
+ 574:Src/setup.c   **** 
+ 575:Src/setup.c   ****   HAL_TIM_PWM_Start(&htim_left, TIM_CHANNEL_1);
+ 889              		.loc 1 575 3 is_stmt 1 view .LVU316
+ 890 017c 2146     		mov	r1, r4
+ 891 017e 2846     		mov	r0, r5
+ 892 0180 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 893              	.LVL49:
+ 576:Src/setup.c   ****   HAL_TIM_PWM_Start(&htim_left, TIM_CHANNEL_2);
+ 894              		.loc 1 576 3 view .LVU317
+ 895 0184 0421     		movs	r1, #4
+ 896 0186 2846     		mov	r0, r5
+ 897 0188 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 898              	.LVL50:
+ 577:Src/setup.c   ****   HAL_TIM_PWM_Start(&htim_left, TIM_CHANNEL_3);
+ 899              		.loc 1 577 3 view .LVU318
+ 900 018c 3946     		mov	r1, r7
+ 901 018e 2846     		mov	r0, r5
+ 902 0190 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 903              	.LVL51:
+ 578:Src/setup.c   ****   HAL_TIMEx_PWMN_Start(&htim_left, TIM_CHANNEL_1);
+ 904              		.loc 1 578 3 view .LVU319
+ 905 0194 2146     		mov	r1, r4
+ 906 0196 2846     		mov	r0, r5
+ 907 0198 FFF7FEFF 		bl	HAL_TIMEx_PWMN_Start
+ 908              	.LVL52:
+ 579:Src/setup.c   ****   HAL_TIMEx_PWMN_Start(&htim_left, TIM_CHANNEL_2);
+ARM GAS  /tmp/ccM5ic1O.s 			page 27
+
+
+ 909              		.loc 1 579 3 view .LVU320
+ 910 019c 0421     		movs	r1, #4
+ 911 019e 2846     		mov	r0, r5
+ 912 01a0 FFF7FEFF 		bl	HAL_TIMEx_PWMN_Start
+ 913              	.LVL53:
+ 580:Src/setup.c   ****   HAL_TIMEx_PWMN_Start(&htim_left, TIM_CHANNEL_3);  
+ 914              		.loc 1 580 3 view .LVU321
+ 915 01a4 3946     		mov	r1, r7
+ 916 01a6 2846     		mov	r0, r5
+ 917 01a8 FFF7FEFF 		bl	HAL_TIMEx_PWMN_Start
+ 918              	.LVL54:
+ 581:Src/setup.c   **** 
+ 582:Src/setup.c   ****   HAL_TIM_PWM_Start(&htim_right, TIM_CHANNEL_1);
+ 919              		.loc 1 582 3 view .LVU322
+ 920 01ac 2146     		mov	r1, r4
+ 921 01ae 3046     		mov	r0, r6
+ 922 01b0 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 923              	.LVL55:
+ 583:Src/setup.c   ****   HAL_TIM_PWM_Start(&htim_right, TIM_CHANNEL_2);
+ 924              		.loc 1 583 3 view .LVU323
+ 925 01b4 0421     		movs	r1, #4
+ 926 01b6 3046     		mov	r0, r6
+ 927 01b8 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 928              	.LVL56:
+ 584:Src/setup.c   ****   HAL_TIM_PWM_Start(&htim_right, TIM_CHANNEL_3);
+ 929              		.loc 1 584 3 view .LVU324
+ 930 01bc 3946     		mov	r1, r7
+ 931 01be 3046     		mov	r0, r6
+ 932 01c0 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 933              	.LVL57:
+ 585:Src/setup.c   ****   HAL_TIMEx_PWMN_Start(&htim_right, TIM_CHANNEL_1);
+ 934              		.loc 1 585 3 view .LVU325
+ 935 01c4 2146     		mov	r1, r4
+ 936 01c6 3046     		mov	r0, r6
+ 937 01c8 FFF7FEFF 		bl	HAL_TIMEx_PWMN_Start
+ 938              	.LVL58:
+ 586:Src/setup.c   ****   HAL_TIMEx_PWMN_Start(&htim_right, TIM_CHANNEL_2);
+ 939              		.loc 1 586 3 view .LVU326
+ 940 01cc 0421     		movs	r1, #4
+ 941 01ce 3046     		mov	r0, r6
+ 942 01d0 FFF7FEFF 		bl	HAL_TIMEx_PWMN_Start
+ 943              	.LVL59:
+ 587:Src/setup.c   ****   HAL_TIMEx_PWMN_Start(&htim_right, TIM_CHANNEL_3);
+ 944              		.loc 1 587 3 view .LVU327
+ 945 01d4 3946     		mov	r1, r7
+ 946 01d6 3046     		mov	r0, r6
+ 947 01d8 FFF7FEFF 		bl	HAL_TIMEx_PWMN_Start
+ 948              	.LVL60:
+ 588:Src/setup.c   **** 
+ 589:Src/setup.c   ****   htim_left.Instance->RCR = 1;
+ 949              		.loc 1 589 3 view .LVU328
+ 950              		.loc 1 589 12 is_stmt 0 view .LVU329
+ 951 01dc 2B68     		ldr	r3, [r5]
+ 952              		.loc 1 589 27 view .LVU330
+ 953 01de 0122     		movs	r2, #1
+ 954 01e0 1A63     		str	r2, [r3, #48]
+ 590:Src/setup.c   **** 
+ARM GAS  /tmp/ccM5ic1O.s 			page 28
+
+
+ 591:Src/setup.c   ****   __HAL_TIM_ENABLE(&htim_right);
+ 955              		.loc 1 591 3 is_stmt 1 view .LVU331
+ 956 01e2 3268     		ldr	r2, [r6]
+ 957 01e4 1368     		ldr	r3, [r2]
+ 958 01e6 43F00103 		orr	r3, r3, #1
+ 959 01ea 1360     		str	r3, [r2]
+ 592:Src/setup.c   **** }
+ 960              		.loc 1 592 1 is_stmt 0 view .LVU332
+ 961 01ec 19B0     		add	sp, sp, #100
+ 962              	.LCFI8:
+ 963              		.cfi_def_cfa_offset 36
+ 964              		@ sp needed
+ 965 01ee BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 966              	.L12:
+ 967 01f2 00BF     		.align	2
+ 968              	.L11:
+ 969 01f4 00100240 		.word	1073876992
+ 970 01f8 00000000 		.word	.LANCHOR1
+ 971 01fc 002C0140 		.word	1073818624
+ 972 0200 00000000 		.word	.LANCHOR2
+ 973 0204 00340140 		.word	1073820672
+ 974              		.cfi_endproc
+ 975              	.LFE68:
+ 977              		.section	.text.MX_ADC1_Init,"ax",%progbits
+ 978              		.align	1
+ 979              		.global	MX_ADC1_Init
+ 980              		.syntax unified
+ 981              		.thumb
+ 982              		.thumb_func
+ 983              		.fpu softvfp
+ 985              	MX_ADC1_Init:
+ 986              	.LFB69:
+ 593:Src/setup.c   **** 
+ 594:Src/setup.c   **** void MX_ADC1_Init(void) {
+ 987              		.loc 1 594 25 is_stmt 1 view -0
+ 988              		.cfi_startproc
+ 989              		@ args = 0, pretend = 0, frame = 24
+ 990              		@ frame_needed = 0, uses_anonymous_args = 0
+ 991 0000 2DE9F043 		push	{r4, r5, r6, r7, r8, r9, lr}
+ 992              	.LCFI9:
+ 993              		.cfi_def_cfa_offset 28
+ 994              		.cfi_offset 4, -28
+ 995              		.cfi_offset 5, -24
+ 996              		.cfi_offset 6, -20
+ 997              		.cfi_offset 7, -16
+ 998              		.cfi_offset 8, -12
+ 999              		.cfi_offset 9, -8
+ 1000              		.cfi_offset 14, -4
+ 1001 0004 87B0     		sub	sp, sp, #28
+ 1002              	.LCFI10:
+ 1003              		.cfi_def_cfa_offset 56
+ 595:Src/setup.c   ****   ADC_MultiModeTypeDef multimode;
+ 1004              		.loc 1 595 3 view .LVU334
+ 596:Src/setup.c   ****   ADC_ChannelConfTypeDef sConfig;
+ 1005              		.loc 1 596 3 view .LVU335
+ 597:Src/setup.c   **** 
+ 598:Src/setup.c   ****   __HAL_RCC_ADC1_CLK_ENABLE();
+ARM GAS  /tmp/ccM5ic1O.s 			page 29
+
+
+ 1006              		.loc 1 598 3 view .LVU336
+ 1007              	.LBB9:
+ 1008              		.loc 1 598 3 view .LVU337
+ 1009              		.loc 1 598 3 view .LVU338
+ 1010 0006 434E     		ldr	r6, .L15
+ 1011 0008 B369     		ldr	r3, [r6, #24]
+ 1012 000a 43F40073 		orr	r3, r3, #512
+ 1013 000e B361     		str	r3, [r6, #24]
+ 1014              		.loc 1 598 3 view .LVU339
+ 1015 0010 B369     		ldr	r3, [r6, #24]
+ 1016 0012 03F40073 		and	r3, r3, #512
+ 1017 0016 0093     		str	r3, [sp]
+ 1018              		.loc 1 598 3 view .LVU340
+ 1019 0018 009B     		ldr	r3, [sp]
+ 1020              	.LBE9:
+ 1021              		.loc 1 598 3 view .LVU341
+ 599:Src/setup.c   **** 
+ 600:Src/setup.c   ****   hadc1.Instance                   = ADC1;
+ 1022              		.loc 1 600 3 view .LVU342
+ 1023              		.loc 1 600 36 is_stmt 0 view .LVU343
+ 1024 001a 3F4C     		ldr	r4, .L15+4
+ 1025 001c 3F4B     		ldr	r3, .L15+8
+ 1026 001e 2360     		str	r3, [r4]
+ 601:Src/setup.c   ****   hadc1.Init.ScanConvMode          = ADC_SCAN_ENABLE;
+ 1027              		.loc 1 601 3 is_stmt 1 view .LVU344
+ 1028              		.loc 1 601 36 is_stmt 0 view .LVU345
+ 1029 0020 4FF48073 		mov	r3, #256
+ 1030 0024 A360     		str	r3, [r4, #8]
+ 602:Src/setup.c   ****   hadc1.Init.ContinuousConvMode    = DISABLE;
+ 1031              		.loc 1 602 3 is_stmt 1 view .LVU346
+ 1032              		.loc 1 602 36 is_stmt 0 view .LVU347
+ 1033 0026 0025     		movs	r5, #0
+ 1034 0028 E560     		str	r5, [r4, #12]
+ 603:Src/setup.c   ****   hadc1.Init.DiscontinuousConvMode = DISABLE;
+ 1035              		.loc 1 603 3 is_stmt 1 view .LVU348
+ 1036              		.loc 1 603 36 is_stmt 0 view .LVU349
+ 1037 002a 6561     		str	r5, [r4, #20]
+ 604:Src/setup.c   ****   hadc1.Init.ExternalTrigConv      = ADC_EXTERNALTRIGCONV_T8_TRGO;
+ 1038              		.loc 1 604 3 is_stmt 1 view .LVU350
+ 1039              		.loc 1 604 36 is_stmt 0 view .LVU351
+ 1040 002c 4FF44023 		mov	r3, #786432
+ 1041 0030 E361     		str	r3, [r4, #28]
+ 605:Src/setup.c   ****   hadc1.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+ 1042              		.loc 1 605 3 is_stmt 1 view .LVU352
+ 1043              		.loc 1 605 36 is_stmt 0 view .LVU353
+ 1044 0032 6560     		str	r5, [r4, #4]
+ 606:Src/setup.c   ****   hadc1.Init.NbrOfConversion       = 5;
+ 1045              		.loc 1 606 3 is_stmt 1 view .LVU354
+ 1046              		.loc 1 606 36 is_stmt 0 view .LVU355
+ 1047 0034 4FF00508 		mov	r8, #5
+ 1048 0038 C4F81080 		str	r8, [r4, #16]
+ 607:Src/setup.c   ****   HAL_ADC_Init(&hadc1);
+ 1049              		.loc 1 607 3 is_stmt 1 view .LVU356
+ 1050 003c 2046     		mov	r0, r4
+ 1051 003e FFF7FEFF 		bl	HAL_ADC_Init
+ 1052              	.LVL61:
+ 608:Src/setup.c   ****   /**Enable or disable the remapping of ADC1_ETRGREG:
+ARM GAS  /tmp/ccM5ic1O.s 			page 30
+
+
+ 609:Src/setup.c   ****     * ADC1 External Event regular conversion is connected to TIM8 TRG0
+ 610:Src/setup.c   ****     */
+ 611:Src/setup.c   ****   __HAL_AFIO_REMAP_ADC1_ETRGREG_ENABLE();
+ 1053              		.loc 1 611 3 view .LVU357
+ 1054 0042 374A     		ldr	r2, .L15+12
+ 1055 0044 5368     		ldr	r3, [r2, #4]
+ 1056 0046 43F48023 		orr	r3, r3, #262144
+ 1057 004a 5360     		str	r3, [r2, #4]
+ 612:Src/setup.c   **** 
+ 613:Src/setup.c   ****   /**Configure the ADC multi-mode
+ 614:Src/setup.c   ****     */
+ 615:Src/setup.c   ****   multimode.Mode = ADC_DUALMODE_REGSIMULT;
+ 1058              		.loc 1 615 3 view .LVU358
+ 1059              		.loc 1 615 18 is_stmt 0 view .LVU359
+ 1060 004c 4FF4C023 		mov	r3, #393216
+ 1061 0050 0593     		str	r3, [sp, #20]
+ 616:Src/setup.c   ****   HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode);
+ 1062              		.loc 1 616 3 is_stmt 1 view .LVU360
+ 1063 0052 05A9     		add	r1, sp, #20
+ 1064 0054 2046     		mov	r0, r4
+ 1065 0056 FFF7FEFF 		bl	HAL_ADCEx_MultiModeConfigChannel
+ 1066              	.LVL62:
+ 617:Src/setup.c   **** 
+ 618:Src/setup.c   ****   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+ 1067              		.loc 1 618 3 view .LVU361
+ 1068              		.loc 1 618 24 is_stmt 0 view .LVU362
+ 1069 005a 0495     		str	r5, [sp, #16]
+ 619:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_11;  // pc1 left cur  ->  right
+ 1070              		.loc 1 619 3 is_stmt 1 view .LVU363
+ 1071              		.loc 1 619 19 is_stmt 0 view .LVU364
+ 1072 005c 0B27     		movs	r7, #11
+ 1073 005e 0297     		str	r7, [sp, #8]
+ 620:Src/setup.c   ****   sConfig.Rank    = 1;
+ 1074              		.loc 1 620 3 is_stmt 1 view .LVU365
+ 1075              		.loc 1 620 19 is_stmt 0 view .LVU366
+ 1076 0060 4FF00109 		mov	r9, #1
+ 1077 0064 CDF80C90 		str	r9, [sp, #12]
+ 621:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+ 1078              		.loc 1 621 3 is_stmt 1 view .LVU367
+ 1079 0068 02A9     		add	r1, sp, #8
+ 1080 006a 2046     		mov	r0, r4
+ 1081 006c FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1082              	.LVL63:
+ 622:Src/setup.c   **** 
+ 623:Src/setup.c   ****   // sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+ 624:Src/setup.c   ****   sConfig.SamplingTime = ADC_SAMPLETIME_7CYCLES_5;
+ 1083              		.loc 1 624 3 view .LVU368
+ 1084              		.loc 1 624 24 is_stmt 0 view .LVU369
+ 1085 0070 CDF81090 		str	r9, [sp, #16]
+ 625:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_0;  // pa0 right a   ->  left
+ 1086              		.loc 1 625 3 is_stmt 1 view .LVU370
+ 1087              		.loc 1 625 19 is_stmt 0 view .LVU371
+ 1088 0074 0295     		str	r5, [sp, #8]
+ 626:Src/setup.c   ****   sConfig.Rank    = 2;
+ 1089              		.loc 1 626 3 is_stmt 1 view .LVU372
+ 1090              		.loc 1 626 19 is_stmt 0 view .LVU373
+ 1091 0076 0223     		movs	r3, #2
+ARM GAS  /tmp/ccM5ic1O.s 			page 31
+
+
+ 1092 0078 0393     		str	r3, [sp, #12]
+ 627:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+ 1093              		.loc 1 627 3 is_stmt 1 view .LVU374
+ 1094 007a 02A9     		add	r1, sp, #8
+ 1095 007c 2046     		mov	r0, r4
+ 1096 007e FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1097              	.LVL64:
+ 628:Src/setup.c   **** 
+ 629:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_14;  // pc4 left b   -> right
+ 1098              		.loc 1 629 3 view .LVU375
+ 1099              		.loc 1 629 19 is_stmt 0 view .LVU376
+ 1100 0082 0E23     		movs	r3, #14
+ 1101 0084 0293     		str	r3, [sp, #8]
+ 630:Src/setup.c   ****   sConfig.Rank    = 3;
+ 1102              		.loc 1 630 3 is_stmt 1 view .LVU377
+ 1103              		.loc 1 630 19 is_stmt 0 view .LVU378
+ 1104 0086 0323     		movs	r3, #3
+ 1105 0088 0393     		str	r3, [sp, #12]
+ 631:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+ 1106              		.loc 1 631 3 is_stmt 1 view .LVU379
+ 1107 008a 02A9     		add	r1, sp, #8
+ 1108 008c 2046     		mov	r0, r4
+ 1109 008e FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1110              	.LVL65:
+ 632:Src/setup.c   **** 
+ 633:Src/setup.c   ****   #if BOARD_VARIANT == 0
+ 634:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_12;  // pc2 vbat
+ 1111              		.loc 1 634 3 view .LVU380
+ 1112              		.loc 1 634 19 is_stmt 0 view .LVU381
+ 1113 0092 0C23     		movs	r3, #12
+ 1114 0094 0293     		str	r3, [sp, #8]
+ 635:Src/setup.c   ****   #elif BOARD_VARIANT == 1
+ 636:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_1;   // pa1 vbat
+ 637:Src/setup.c   ****   #endif
+ 638:Src/setup.c   ****   sConfig.Rank    = 4;
+ 1115              		.loc 1 638 3 is_stmt 1 view .LVU382
+ 1116              		.loc 1 638 19 is_stmt 0 view .LVU383
+ 1117 0096 0423     		movs	r3, #4
+ 1118 0098 0393     		str	r3, [sp, #12]
+ 639:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+ 1119              		.loc 1 639 3 is_stmt 1 view .LVU384
+ 1120 009a 02A9     		add	r1, sp, #8
+ 1121 009c 2046     		mov	r0, r4
+ 1122 009e FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1123              	.LVL66:
+ 640:Src/setup.c   **** 
+ 641:Src/setup.c   ****   //temperature requires at least 17.1uS sampling time
+ 642:Src/setup.c   ****   sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+ 1124              		.loc 1 642 3 view .LVU385
+ 1125              		.loc 1 642 24 is_stmt 0 view .LVU386
+ 1126 00a2 0723     		movs	r3, #7
+ 1127 00a4 0493     		str	r3, [sp, #16]
+ 643:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;  // internal temp
+ 1128              		.loc 1 643 3 is_stmt 1 view .LVU387
+ 1129              		.loc 1 643 19 is_stmt 0 view .LVU388
+ 1130 00a6 1023     		movs	r3, #16
+ 1131 00a8 0293     		str	r3, [sp, #8]
+ARM GAS  /tmp/ccM5ic1O.s 			page 32
+
+
+ 644:Src/setup.c   ****   sConfig.Rank    = 5;
+ 1132              		.loc 1 644 3 is_stmt 1 view .LVU389
+ 1133              		.loc 1 644 19 is_stmt 0 view .LVU390
+ 1134 00aa CDF80C80 		str	r8, [sp, #12]
+ 645:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+ 1135              		.loc 1 645 3 is_stmt 1 view .LVU391
+ 1136 00ae 02A9     		add	r1, sp, #8
+ 1137 00b0 2046     		mov	r0, r4
+ 1138 00b2 FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1139              	.LVL67:
+ 646:Src/setup.c   **** 
+ 647:Src/setup.c   ****   hadc1.Instance->CR2 |= ADC_CR2_DMA | ADC_CR2_TSVREFE;
+ 1140              		.loc 1 647 3 view .LVU392
+ 1141              		.loc 1 647 8 is_stmt 0 view .LVU393
+ 1142 00b6 2268     		ldr	r2, [r4]
+ 1143              		.loc 1 647 23 view .LVU394
+ 1144 00b8 9368     		ldr	r3, [r2, #8]
+ 1145 00ba 43F40003 		orr	r3, r3, #8388608
+ 1146 00be 43F48073 		orr	r3, r3, #256
+ 1147 00c2 9360     		str	r3, [r2, #8]
+ 648:Src/setup.c   **** 
+ 649:Src/setup.c   ****   __HAL_ADC_ENABLE(&hadc1);
+ 1148              		.loc 1 649 3 is_stmt 1 view .LVU395
+ 1149 00c4 9368     		ldr	r3, [r2, #8]
+ 1150 00c6 43EA0903 		orr	r3, r3, r9
+ 1151 00ca 9360     		str	r3, [r2, #8]
+ 650:Src/setup.c   **** 
+ 651:Src/setup.c   ****   __HAL_RCC_DMA1_CLK_ENABLE();
+ 1152              		.loc 1 651 3 view .LVU396
+ 1153              	.LBB10:
+ 1154              		.loc 1 651 3 view .LVU397
+ 1155              		.loc 1 651 3 view .LVU398
+ 1156 00cc 7369     		ldr	r3, [r6, #20]
+ 1157 00ce 43EA0903 		orr	r3, r3, r9
+ 1158 00d2 7361     		str	r3, [r6, #20]
+ 1159              		.loc 1 651 3 view .LVU399
+ 1160 00d4 7369     		ldr	r3, [r6, #20]
+ 1161 00d6 03EA0903 		and	r3, r3, r9
+ 1162 00da 0193     		str	r3, [sp, #4]
+ 1163              		.loc 1 651 3 view .LVU400
+ 1164 00dc 019B     		ldr	r3, [sp, #4]
+ 1165              	.LBE10:
+ 1166              		.loc 1 651 3 view .LVU401
+ 652:Src/setup.c   **** 
+ 653:Src/setup.c   ****   DMA1_Channel1->CCR   = 0;
+ 1167              		.loc 1 653 3 view .LVU402
+ 1168              		.loc 1 653 24 is_stmt 0 view .LVU403
+ 1169 00de 114B     		ldr	r3, .L15+16
+ 1170 00e0 9D60     		str	r5, [r3, #8]
+ 654:Src/setup.c   ****   DMA1_Channel1->CNDTR = 5;
+ 1171              		.loc 1 654 3 is_stmt 1 view .LVU404
+ 1172              		.loc 1 654 24 is_stmt 0 view .LVU405
+ 1173 00e2 C3F80C80 		str	r8, [r3, #12]
+ 655:Src/setup.c   ****   DMA1_Channel1->CPAR  = (uint32_t) & (ADC1->DR);
+ 1174              		.loc 1 655 3 is_stmt 1 view .LVU406
+ 1175              		.loc 1 655 24 is_stmt 0 view .LVU407
+ 1176 00e6 104A     		ldr	r2, .L15+20
+ARM GAS  /tmp/ccM5ic1O.s 			page 33
+
+
+ 1177 00e8 1A61     		str	r2, [r3, #16]
+ 656:Src/setup.c   ****   DMA1_Channel1->CMAR  = (uint32_t)&adc_buffer;
+ 1178              		.loc 1 656 3 is_stmt 1 view .LVU408
+ 1179              		.loc 1 656 26 is_stmt 0 view .LVU409
+ 1180 00ea 104A     		ldr	r2, .L15+24
+ 1181              		.loc 1 656 24 view .LVU410
+ 1182 00ec 5A61     		str	r2, [r3, #20]
+ 657:Src/setup.c   ****   DMA1_Channel1->CCR   = DMA_CCR_MSIZE_1 | DMA_CCR_PSIZE_1 | DMA_CCR_MINC | DMA_CCR_CIRC | DMA_CCR_
+ 1183              		.loc 1 657 3 is_stmt 1 view .LVU411
+ 1184              		.loc 1 657 24 is_stmt 0 view .LVU412
+ 1185 00ee 40F6A222 		movw	r2, #2722
+ 1186 00f2 9A60     		str	r2, [r3, #8]
+ 658:Src/setup.c   ****   DMA1_Channel1->CCR |= DMA_CCR_EN;
+ 1187              		.loc 1 658 3 is_stmt 1 view .LVU413
+ 1188              		.loc 1 658 22 is_stmt 0 view .LVU414
+ 1189 00f4 9A68     		ldr	r2, [r3, #8]
+ 1190 00f6 42EA0902 		orr	r2, r2, r9
+ 1191 00fa 9A60     		str	r2, [r3, #8]
+ 659:Src/setup.c   **** 
+ 660:Src/setup.c   ****   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+ 1192              		.loc 1 660 3 is_stmt 1 view .LVU415
+ 1193 00fc 2A46     		mov	r2, r5
+ 1194 00fe 2946     		mov	r1, r5
+ 1195 0100 3846     		mov	r0, r7
+ 1196 0102 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 1197              	.LVL68:
+ 661:Src/setup.c   ****   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+ 1198              		.loc 1 661 3 view .LVU416
+ 1199 0106 3846     		mov	r0, r7
+ 1200 0108 FFF7FEFF 		bl	HAL_NVIC_EnableIRQ
+ 1201              	.LVL69:
+ 662:Src/setup.c   **** }
+ 1202              		.loc 1 662 1 is_stmt 0 view .LVU417
+ 1203 010c 07B0     		add	sp, sp, #28
+ 1204              	.LCFI11:
+ 1205              		.cfi_def_cfa_offset 28
+ 1206              		@ sp needed
+ 1207 010e BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 1208              	.L16:
+ 1209 0112 00BF     		.align	2
+ 1210              	.L15:
+ 1211 0114 00100240 		.word	1073876992
+ 1212 0118 00000000 		.word	.LANCHOR3
+ 1213 011c 00240140 		.word	1073816576
+ 1214 0120 00000140 		.word	1073807360
+ 1215 0124 00000240 		.word	1073872896
+ 1216 0128 4C240140 		.word	1073816652
+ 1217 012c 00000000 		.word	.LANCHOR4
+ 1218              		.cfi_endproc
+ 1219              	.LFE69:
+ 1221              		.section	.text.MX_ADC2_Init,"ax",%progbits
+ 1222              		.align	1
+ 1223              		.global	MX_ADC2_Init
+ 1224              		.syntax unified
+ 1225              		.thumb
+ 1226              		.thumb_func
+ 1227              		.fpu softvfp
+ARM GAS  /tmp/ccM5ic1O.s 			page 34
+
+
+ 1229              	MX_ADC2_Init:
+ 1230              	.LFB70:
+ 663:Src/setup.c   **** 
+ 664:Src/setup.c   **** /* ADC2 init function */
+ 665:Src/setup.c   **** void MX_ADC2_Init(void) {
+ 1231              		.loc 1 665 25 is_stmt 1 view -0
+ 1232              		.cfi_startproc
+ 1233              		@ args = 0, pretend = 0, frame = 16
+ 1234              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1235 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+ 1236              	.LCFI12:
+ 1237              		.cfi_def_cfa_offset 20
+ 1238              		.cfi_offset 4, -20
+ 1239              		.cfi_offset 5, -16
+ 1240              		.cfi_offset 6, -12
+ 1241              		.cfi_offset 7, -8
+ 1242              		.cfi_offset 14, -4
+ 1243 0002 85B0     		sub	sp, sp, #20
+ 1244              	.LCFI13:
+ 1245              		.cfi_def_cfa_offset 40
+ 666:Src/setup.c   ****   ADC_ChannelConfTypeDef sConfig;
+ 1246              		.loc 1 666 3 view .LVU419
+ 667:Src/setup.c   **** 
+ 668:Src/setup.c   ****   __HAL_RCC_ADC2_CLK_ENABLE();
+ 1247              		.loc 1 668 3 view .LVU420
+ 1248              	.LBB11:
+ 1249              		.loc 1 668 3 view .LVU421
+ 1250              		.loc 1 668 3 view .LVU422
+ 1251 0004 274B     		ldr	r3, .L19
+ 1252 0006 9A69     		ldr	r2, [r3, #24]
+ 1253 0008 42F48062 		orr	r2, r2, #1024
+ 1254 000c 9A61     		str	r2, [r3, #24]
+ 1255              		.loc 1 668 3 view .LVU423
+ 1256 000e 9B69     		ldr	r3, [r3, #24]
+ 1257 0010 03F48063 		and	r3, r3, #1024
+ 1258 0014 0093     		str	r3, [sp]
+ 1259              		.loc 1 668 3 view .LVU424
+ 1260 0016 009B     		ldr	r3, [sp]
+ 1261              	.LBE11:
+ 1262              		.loc 1 668 3 view .LVU425
+ 669:Src/setup.c   **** 
+ 670:Src/setup.c   ****   // HAL_ADC_DeInit(&hadc2);
+ 671:Src/setup.c   ****   // hadc2.Instance->CR2 = 0;
+ 672:Src/setup.c   ****   /**Common config
+ 673:Src/setup.c   ****     */
+ 674:Src/setup.c   ****   hadc2.Instance                   = ADC2;
+ 1263              		.loc 1 674 3 view .LVU426
+ 1264              		.loc 1 674 36 is_stmt 0 view .LVU427
+ 1265 0018 234C     		ldr	r4, .L19+4
+ 1266 001a 244B     		ldr	r3, .L19+8
+ 1267 001c 2360     		str	r3, [r4]
+ 675:Src/setup.c   ****   hadc2.Init.ScanConvMode          = ADC_SCAN_ENABLE;
+ 1268              		.loc 1 675 3 is_stmt 1 view .LVU428
+ 1269              		.loc 1 675 36 is_stmt 0 view .LVU429
+ 1270 001e 4FF48073 		mov	r3, #256
+ 1271 0022 A360     		str	r3, [r4, #8]
+ 676:Src/setup.c   ****   hadc2.Init.ContinuousConvMode    = DISABLE;
+ARM GAS  /tmp/ccM5ic1O.s 			page 35
+
+
+ 1272              		.loc 1 676 3 is_stmt 1 view .LVU430
+ 1273              		.loc 1 676 36 is_stmt 0 view .LVU431
+ 1274 0024 0025     		movs	r5, #0
+ 1275 0026 E560     		str	r5, [r4, #12]
+ 677:Src/setup.c   ****   hadc2.Init.DiscontinuousConvMode = DISABLE;
+ 1276              		.loc 1 677 3 is_stmt 1 view .LVU432
+ 1277              		.loc 1 677 36 is_stmt 0 view .LVU433
+ 1278 0028 6561     		str	r5, [r4, #20]
+ 678:Src/setup.c   ****   hadc2.Init.ExternalTrigConv      = ADC_SOFTWARE_START;
+ 1279              		.loc 1 678 3 is_stmt 1 view .LVU434
+ 1280              		.loc 1 678 36 is_stmt 0 view .LVU435
+ 1281 002a 4FF46023 		mov	r3, #917504
+ 1282 002e E361     		str	r3, [r4, #28]
+ 679:Src/setup.c   ****   hadc2.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+ 1283              		.loc 1 679 3 is_stmt 1 view .LVU436
+ 1284              		.loc 1 679 36 is_stmt 0 view .LVU437
+ 1285 0030 6560     		str	r5, [r4, #4]
+ 680:Src/setup.c   ****   hadc2.Init.NbrOfConversion       = 5;
+ 1286              		.loc 1 680 3 is_stmt 1 view .LVU438
+ 1287              		.loc 1 680 36 is_stmt 0 view .LVU439
+ 1288 0032 0526     		movs	r6, #5
+ 1289 0034 2661     		str	r6, [r4, #16]
+ 681:Src/setup.c   ****   HAL_ADC_Init(&hadc2);
+ 1290              		.loc 1 681 3 is_stmt 1 view .LVU440
+ 1291 0036 2046     		mov	r0, r4
+ 1292 0038 FFF7FEFF 		bl	HAL_ADC_Init
+ 1293              	.LVL70:
+ 682:Src/setup.c   **** 
+ 683:Src/setup.c   ****  
+ 684:Src/setup.c   ****   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+ 1294              		.loc 1 684 3 view .LVU441
+ 1295              		.loc 1 684 24 is_stmt 0 view .LVU442
+ 1296 003c 0395     		str	r5, [sp, #12]
+ 685:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_10;  // pc0 right cur   -> left
+ 1297              		.loc 1 685 3 is_stmt 1 view .LVU443
+ 1298              		.loc 1 685 19 is_stmt 0 view .LVU444
+ 1299 003e 0A23     		movs	r3, #10
+ 1300 0040 0193     		str	r3, [sp, #4]
+ 686:Src/setup.c   ****   sConfig.Rank    = 1;
+ 1301              		.loc 1 686 3 is_stmt 1 view .LVU445
+ 1302              		.loc 1 686 19 is_stmt 0 view .LVU446
+ 1303 0042 0125     		movs	r5, #1
+ 1304 0044 0295     		str	r5, [sp, #8]
+ 687:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc2, &sConfig);
+ 1305              		.loc 1 687 3 is_stmt 1 view .LVU447
+ 1306 0046 01A9     		add	r1, sp, #4
+ 1307 0048 2046     		mov	r0, r4
+ 1308 004a FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1309              	.LVL71:
+ 688:Src/setup.c   **** 
+ 689:Src/setup.c   ****   // sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+ 690:Src/setup.c   ****   sConfig.SamplingTime = ADC_SAMPLETIME_7CYCLES_5;
+ 1310              		.loc 1 690 3 view .LVU448
+ 1311              		.loc 1 690 24 is_stmt 0 view .LVU449
+ 1312 004e 0395     		str	r5, [sp, #12]
+ 691:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_13;  // pc3 right b   -> left
+ 1313              		.loc 1 691 3 is_stmt 1 view .LVU450
+ARM GAS  /tmp/ccM5ic1O.s 			page 36
+
+
+ 1314              		.loc 1 691 19 is_stmt 0 view .LVU451
+ 1315 0050 0D23     		movs	r3, #13
+ 1316 0052 0193     		str	r3, [sp, #4]
+ 692:Src/setup.c   ****   sConfig.Rank    = 2;
+ 1317              		.loc 1 692 3 is_stmt 1 view .LVU452
+ 1318              		.loc 1 692 19 is_stmt 0 view .LVU453
+ 1319 0054 0227     		movs	r7, #2
+ 1320 0056 0297     		str	r7, [sp, #8]
+ 693:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc2, &sConfig);
+ 1321              		.loc 1 693 3 is_stmt 1 view .LVU454
+ 1322 0058 01A9     		add	r1, sp, #4
+ 1323 005a 2046     		mov	r0, r4
+ 1324 005c FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1325              	.LVL72:
+ 694:Src/setup.c   **** 
+ 695:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_15;  // pc5 left c   -> right
+ 1326              		.loc 1 695 3 view .LVU455
+ 1327              		.loc 1 695 19 is_stmt 0 view .LVU456
+ 1328 0060 0F23     		movs	r3, #15
+ 1329 0062 0193     		str	r3, [sp, #4]
+ 696:Src/setup.c   ****   sConfig.Rank    = 3;
+ 1330              		.loc 1 696 3 is_stmt 1 view .LVU457
+ 1331              		.loc 1 696 19 is_stmt 0 view .LVU458
+ 1332 0064 0325     		movs	r5, #3
+ 1333 0066 0295     		str	r5, [sp, #8]
+ 697:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc2, &sConfig);
+ 1334              		.loc 1 697 3 is_stmt 1 view .LVU459
+ 1335 0068 01A9     		add	r1, sp, #4
+ 1336 006a 2046     		mov	r0, r4
+ 1337 006c FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1338              	.LVL73:
+ 698:Src/setup.c   **** 
+ 699:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_2;  // pa2 uart-l-tx
+ 1339              		.loc 1 699 3 view .LVU460
+ 1340              		.loc 1 699 19 is_stmt 0 view .LVU461
+ 1341 0070 0197     		str	r7, [sp, #4]
+ 700:Src/setup.c   ****   sConfig.Rank    = 4;
+ 1342              		.loc 1 700 3 is_stmt 1 view .LVU462
+ 1343              		.loc 1 700 19 is_stmt 0 view .LVU463
+ 1344 0072 0423     		movs	r3, #4
+ 1345 0074 0293     		str	r3, [sp, #8]
+ 701:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc2, &sConfig);
+ 1346              		.loc 1 701 3 is_stmt 1 view .LVU464
+ 1347 0076 0DEB0301 		add	r1, sp, r3
+ 1348 007a 2046     		mov	r0, r4
+ 1349 007c FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1350              	.LVL74:
+ 702:Src/setup.c   **** 
+ 703:Src/setup.c   ****   // sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;   // Commented-out to make `uart-l-rx` ADC 
+ 704:Src/setup.c   ****   sConfig.Channel = ADC_CHANNEL_3;  // pa3 uart-l-rx
+ 1351              		.loc 1 704 3 view .LVU465
+ 1352              		.loc 1 704 19 is_stmt 0 view .LVU466
+ 1353 0080 0195     		str	r5, [sp, #4]
+ 705:Src/setup.c   ****   sConfig.Rank    = 5;
+ 1354              		.loc 1 705 3 is_stmt 1 view .LVU467
+ 1355              		.loc 1 705 19 is_stmt 0 view .LVU468
+ 1356 0082 0296     		str	r6, [sp, #8]
+ARM GAS  /tmp/ccM5ic1O.s 			page 37
+
+
+ 706:Src/setup.c   ****   HAL_ADC_ConfigChannel(&hadc2, &sConfig);
+ 1357              		.loc 1 706 3 is_stmt 1 view .LVU469
+ 1358 0084 01A9     		add	r1, sp, #4
+ 1359 0086 2046     		mov	r0, r4
+ 1360 0088 FFF7FEFF 		bl	HAL_ADC_ConfigChannel
+ 1361              	.LVL75:
+ 707:Src/setup.c   **** 
+ 708:Src/setup.c   ****   hadc2.Instance->CR2 |= ADC_CR2_DMA;
+ 1362              		.loc 1 708 3 view .LVU470
+ 1363              		.loc 1 708 8 is_stmt 0 view .LVU471
+ 1364 008c 2368     		ldr	r3, [r4]
+ 1365              		.loc 1 708 23 view .LVU472
+ 1366 008e 9A68     		ldr	r2, [r3, #8]
+ 1367 0090 42F48072 		orr	r2, r2, #256
+ 1368 0094 9A60     		str	r2, [r3, #8]
+ 709:Src/setup.c   ****   __HAL_ADC_ENABLE(&hadc2);
+ 1369              		.loc 1 709 3 is_stmt 1 view .LVU473
+ 1370 0096 9A68     		ldr	r2, [r3, #8]
+ 1371 0098 42F00102 		orr	r2, r2, #1
+ 1372 009c 9A60     		str	r2, [r3, #8]
+ 710:Src/setup.c   **** }
+ 1373              		.loc 1 710 1 is_stmt 0 view .LVU474
+ 1374 009e 05B0     		add	sp, sp, #20
+ 1375              	.LCFI14:
+ 1376              		.cfi_def_cfa_offset 20
+ 1377              		@ sp needed
+ 1378 00a0 F0BD     		pop	{r4, r5, r6, r7, pc}
+ 1379              	.L20:
+ 1380 00a2 00BF     		.align	2
+ 1381              	.L19:
+ 1382 00a4 00100240 		.word	1073876992
+ 1383 00a8 00000000 		.word	.LANCHOR5
+ 1384 00ac 00280140 		.word	1073817600
+ 1385              		.cfi_endproc
+ 1386              	.LFE70:
+ 1388              		.global	hdma_i2c2_tx
+ 1389              		.global	hdma_i2c2_rx
+ 1390              		.global	adc_buffer
+ 1391              		.global	hdma_usart3_tx
+ 1392              		.global	hdma_usart3_rx
+ 1393              		.global	hdma_usart2_tx
+ 1394              		.global	hdma_usart2_rx
+ 1395              		.global	huart3
+ 1396              		.global	huart2
+ 1397              		.global	hi2c2
+ 1398              		.global	hadc2
+ 1399              		.global	hadc1
+ 1400              		.global	htim_left
+ 1401              		.global	htim_right
+ 1402              		.section	.bss.adc_buffer,"aw",%nobits
+ 1403              		.align	2
+ 1404              		.set	.LANCHOR4,. + 0
+ 1407              	adc_buffer:
+ 1408 0000 00000000 		.space	20
+ 1408      00000000 
+ 1408      00000000 
+ 1408      00000000 
+ARM GAS  /tmp/ccM5ic1O.s 			page 38
+
+
+ 1408      00000000 
+ 1409              		.section	.bss.hadc1,"aw",%nobits
+ 1410              		.align	2
+ 1411              		.set	.LANCHOR3,. + 0
+ 1414              	hadc1:
+ 1415 0000 00000000 		.space	48
+ 1415      00000000 
+ 1415      00000000 
+ 1415      00000000 
+ 1415      00000000 
+ 1416              		.section	.bss.hadc2,"aw",%nobits
+ 1417              		.align	2
+ 1418              		.set	.LANCHOR5,. + 0
+ 1421              	hadc2:
+ 1422 0000 00000000 		.space	48
+ 1422      00000000 
+ 1422      00000000 
+ 1422      00000000 
+ 1422      00000000 
+ 1423              		.section	.bss.hdma_i2c2_rx,"aw",%nobits
+ 1424              		.align	2
+ 1427              	hdma_i2c2_rx:
+ 1428 0000 00000000 		.space	68
+ 1428      00000000 
+ 1428      00000000 
+ 1428      00000000 
+ 1428      00000000 
+ 1429              		.section	.bss.hdma_i2c2_tx,"aw",%nobits
+ 1430              		.align	2
+ 1433              	hdma_i2c2_tx:
+ 1434 0000 00000000 		.space	68
+ 1434      00000000 
+ 1434      00000000 
+ 1434      00000000 
+ 1434      00000000 
+ 1435              		.section	.bss.hdma_usart2_rx,"aw",%nobits
+ 1436              		.align	2
+ 1439              	hdma_usart2_rx:
+ 1440 0000 00000000 		.space	68
+ 1440      00000000 
+ 1440      00000000 
+ 1440      00000000 
+ 1440      00000000 
+ 1441              		.section	.bss.hdma_usart2_tx,"aw",%nobits
+ 1442              		.align	2
+ 1445              	hdma_usart2_tx:
+ 1446 0000 00000000 		.space	68
+ 1446      00000000 
+ 1446      00000000 
+ 1446      00000000 
+ 1446      00000000 
+ 1447              		.section	.bss.hdma_usart3_rx,"aw",%nobits
+ 1448              		.align	2
+ 1451              	hdma_usart3_rx:
+ 1452 0000 00000000 		.space	68
+ 1452      00000000 
+ 1452      00000000 
+ARM GAS  /tmp/ccM5ic1O.s 			page 39
+
+
+ 1452      00000000 
+ 1452      00000000 
+ 1453              		.section	.bss.hdma_usart3_tx,"aw",%nobits
+ 1454              		.align	2
+ 1457              	hdma_usart3_tx:
+ 1458 0000 00000000 		.space	68
+ 1458      00000000 
+ 1458      00000000 
+ 1458      00000000 
+ 1458      00000000 
+ 1459              		.section	.bss.hi2c2,"aw",%nobits
+ 1460              		.align	2
+ 1461              		.set	.LANCHOR0,. + 0
+ 1464              	hi2c2:
+ 1465 0000 00000000 		.space	84
+ 1465      00000000 
+ 1465      00000000 
+ 1465      00000000 
+ 1465      00000000 
+ 1466              		.section	.bss.htim_left,"aw",%nobits
+ 1467              		.align	2
+ 1468              		.set	.LANCHOR2,. + 0
+ 1471              	htim_left:
+ 1472 0000 00000000 		.space	64
+ 1472      00000000 
+ 1472      00000000 
+ 1472      00000000 
+ 1472      00000000 
+ 1473              		.section	.bss.htim_right,"aw",%nobits
+ 1474              		.align	2
+ 1475              		.set	.LANCHOR1,. + 0
+ 1478              	htim_right:
+ 1479 0000 00000000 		.space	64
+ 1479      00000000 
+ 1479      00000000 
+ 1479      00000000 
+ 1479      00000000 
+ 1480              		.section	.bss.huart2,"aw",%nobits
+ 1481              		.align	2
+ 1484              	huart2:
+ 1485 0000 00000000 		.space	64
+ 1485      00000000 
+ 1485      00000000 
+ 1485      00000000 
+ 1485      00000000 
+ 1486              		.section	.bss.huart3,"aw",%nobits
+ 1487              		.align	2
+ 1490              	huart3:
+ 1491 0000 00000000 		.space	64
+ 1491      00000000 
+ 1491      00000000 
+ 1491      00000000 
+ 1491      00000000 
+ 1492              		.text
+ 1493              	.Letext0:
+ 1494              		.file 2 "/usr/lib/gcc/arm-none-eabi/10.3.1/include/stdint.h"
+ 1495              		.file 3 "Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xe.h"
+ARM GAS  /tmp/ccM5ic1O.s 			page 40
+
+
+ 1496              		.file 4 "Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h"
+ 1497              		.file 5 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_def.h"
+ 1498              		.file 6 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h"
+ 1499              		.file 7 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma.h"
+ 1500              		.file 8 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_adc.h"
+ 1501              		.file 9 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_adc_ex.h"
+ 1502              		.file 10 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h"
+ 1503              		.file 11 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h"
+ 1504              		.file 12 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h"
+ 1505              		.file 13 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h"
+ 1506              		.file 14 "Inc/defines.h"
+ 1507              		.file 15 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h"
+ARM GAS  /tmp/ccM5ic1O.s 			page 41
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 setup.c
+     /tmp/ccM5ic1O.s:16     .text.I2C_Init:0000000000000000 $t
+     /tmp/ccM5ic1O.s:24     .text.I2C_Init:0000000000000000 I2C_Init
+     /tmp/ccM5ic1O.s:144    .text.I2C_Init:0000000000000078 $d
+     /tmp/ccM5ic1O.s:153    .text.MX_GPIO_Init:0000000000000000 $t
+     /tmp/ccM5ic1O.s:160    .text.MX_GPIO_Init:0000000000000000 MX_GPIO_Init
+     /tmp/ccM5ic1O.s:566    .text.MX_GPIO_Init:000000000000023c $d
+     /tmp/ccM5ic1O.s:573    .text.MX_TIM_Init:0000000000000000 $t
+     /tmp/ccM5ic1O.s:580    .text.MX_TIM_Init:0000000000000000 MX_TIM_Init
+     /tmp/ccM5ic1O.s:969    .text.MX_TIM_Init:00000000000001f4 $d
+     /tmp/ccM5ic1O.s:978    .text.MX_ADC1_Init:0000000000000000 $t
+     /tmp/ccM5ic1O.s:985    .text.MX_ADC1_Init:0000000000000000 MX_ADC1_Init
+     /tmp/ccM5ic1O.s:1211   .text.MX_ADC1_Init:0000000000000114 $d
+     /tmp/ccM5ic1O.s:1222   .text.MX_ADC2_Init:0000000000000000 $t
+     /tmp/ccM5ic1O.s:1229   .text.MX_ADC2_Init:0000000000000000 MX_ADC2_Init
+     /tmp/ccM5ic1O.s:1382   .text.MX_ADC2_Init:00000000000000a4 $d
+     /tmp/ccM5ic1O.s:1433   .bss.hdma_i2c2_tx:0000000000000000 hdma_i2c2_tx
+     /tmp/ccM5ic1O.s:1427   .bss.hdma_i2c2_rx:0000000000000000 hdma_i2c2_rx
+     /tmp/ccM5ic1O.s:1407   .bss.adc_buffer:0000000000000000 adc_buffer
+     /tmp/ccM5ic1O.s:1457   .bss.hdma_usart3_tx:0000000000000000 hdma_usart3_tx
+     /tmp/ccM5ic1O.s:1451   .bss.hdma_usart3_rx:0000000000000000 hdma_usart3_rx
+     /tmp/ccM5ic1O.s:1445   .bss.hdma_usart2_tx:0000000000000000 hdma_usart2_tx
+     /tmp/ccM5ic1O.s:1439   .bss.hdma_usart2_rx:0000000000000000 hdma_usart2_rx
+     /tmp/ccM5ic1O.s:1490   .bss.huart3:0000000000000000 huart3
+     /tmp/ccM5ic1O.s:1484   .bss.huart2:0000000000000000 huart2
+     /tmp/ccM5ic1O.s:1464   .bss.hi2c2:0000000000000000 hi2c2
+     /tmp/ccM5ic1O.s:1421   .bss.hadc2:0000000000000000 hadc2
+     /tmp/ccM5ic1O.s:1414   .bss.hadc1:0000000000000000 hadc1
+     /tmp/ccM5ic1O.s:1471   .bss.htim_left:0000000000000000 htim_left
+     /tmp/ccM5ic1O.s:1478   .bss.htim_right:0000000000000000 htim_right
+     /tmp/ccM5ic1O.s:1403   .bss.adc_buffer:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1410   .bss.hadc1:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1417   .bss.hadc2:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1424   .bss.hdma_i2c2_rx:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1430   .bss.hdma_i2c2_tx:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1436   .bss.hdma_usart2_rx:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1442   .bss.hdma_usart2_tx:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1448   .bss.hdma_usart3_rx:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1454   .bss.hdma_usart3_tx:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1460   .bss.hi2c2:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1467   .bss.htim_left:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1474   .bss.htim_right:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1481   .bss.huart2:0000000000000000 $d
+     /tmp/ccM5ic1O.s:1487   .bss.huart3:0000000000000000 $d
+
+UNDEFINED SYMBOLS
+HAL_GPIO_Init
+HAL_I2C_Init
+HAL_TIM_PWM_Init
+HAL_TIMEx_MasterConfigSynchronization
+HAL_TIM_PWM_ConfigChannel
+HAL_TIMEx_ConfigBreakDeadTime
+HAL_TIM_SlaveConfigSynchronization
+HAL_TIM_PWM_Start
+HAL_TIMEx_PWMN_Start
+HAL_ADC_Init
+ARM GAS  /tmp/ccM5ic1O.s 			page 42
+
+
+HAL_ADCEx_MultiModeConfigChannel
+HAL_ADC_ConfigChannel
+HAL_NVIC_SetPriority
+HAL_NVIC_EnableIRQ
