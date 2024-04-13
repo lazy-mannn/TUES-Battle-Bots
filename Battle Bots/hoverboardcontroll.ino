@@ -32,8 +32,8 @@ void setup()
   I2Cone.begin(SDA_1, SCL_1, 100000); 
   I2Ctwo.begin(SDA_2, SCL_2, 100000);
 
-  bool status = speed.begin(0x60, &I2Cone);
-  bool status1 = direction.begin(0x61, &I2Ctwo);
+  bool status = direction.begin(0x60, &I2Cone);
+  bool status1 = speed.begin(0x61, &I2Ctwo);
 
   pinMode(weapon, OUTPUT);
 
@@ -90,4 +90,3 @@ void loop()
   delay(20);
 
 }
-
