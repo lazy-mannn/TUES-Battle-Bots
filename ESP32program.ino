@@ -39,8 +39,8 @@ void setup()
   Serial.begin(115200);
   
 
-  I2Cone.begin(SDA_1, SCL_1, 100000); 
-  I2Ctwo.begin(SDA_2, SCL_2, 100000);
+  I2Cone.begin(SDA_1, SCL_1, 400000); 
+  I2Ctwo.begin(SDA_2, SCL_2, 400000);
 
   bool status = direction.begin(0x60, &I2Cone);   //You may use different address for the DAC
   bool status1 = speed.begin(0x61, &I2Ctwo);      //You may use different address for the DAC
