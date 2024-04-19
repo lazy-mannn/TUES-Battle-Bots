@@ -14,13 +14,14 @@
 #include <PS4Controller.h>
 
 
-#define SDA_1 27    //pins for controlling steer
+#define SDA_1 27    //pins for the dac responsible controlling steer
 #define SCL_1 26
 
-#define SDA_2 33    //pins for controlling speed
+#define SDA_2 33    //pins for the dac responsible controlling speed
 #define SCL_2 32
 
 int weapon = 22;    //pin for the weapon
+int gear;           //For limiting speed
 
 TwoWire I2Cone = TwoWire(0);
 TwoWire I2Ctwo = TwoWire(1);
@@ -49,14 +50,18 @@ void setup()
 
   PS4.begin();    //Don't change the ESP32 bluetooth mac address. Flash the ESP32 mac address via sixaxis pairing tool. https://sixaxispairtool.en.lo4d.com/windowslo4You
   Serial.println("Ready.");
+  gear = 0;
 }
 
 void loop()
 {
+  //Speed gear
+  if (PS4.Up()) gear = 2;   //Higher speed
+  if (PS4.Down()) gear = 0; //Lower speed
   //For moving back
   back = 0;
   back =  (PS4.L2Value());
-  back_value = (2048-back*8);
+  back_value = (2048-back*(6+gear));
   //Use for debuging:
     //Serial.println(PS4.L2Value());
     //Serial.println(back_value);
@@ -64,7 +69,7 @@ void loop()
   //For moving forward
   forward = 0;
   forward = (PS4.R2Value());
-  forward_value = (2048+forward*8);
+  forward_value = (2048+forward*(6+gear));
   //Use for debuging:
     //Serial.println(PS4.R2Value());
     //Serial.println(forward_value);
