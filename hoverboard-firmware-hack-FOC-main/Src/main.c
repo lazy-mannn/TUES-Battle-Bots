@@ -268,7 +268,7 @@ int main(void) {
       }
 
       // ####### VARIANT_HOVERCAR #######
-      #if defined(VARIANT_HOVERCAR) || defined(VARIANT_SKATEBOARD) || defined(ELECTRIC_BRAKE_ENABLE)
+      /*#if defined(VARIANT_HOVERCAR) && defined(VARIANT_SKATEBOARD) && defined(ELECTRIC_BRAKE_ENABLE)
         uint16_t speedBlend;                                        // Calculate speed Blend, a number between [0, 1] in fixdt(0,16,15)
         speedBlend = (uint16_t)(((CLAMP(speedAvgAbs,10,60) - 10) << 15) / 50); // speedBlend [0,1] is within [10 rpm, 60rpm]
       #endif
@@ -313,7 +313,7 @@ int main(void) {
           }
         }
       #endif
-
+      */
       // ####### LOW-PASS FILTER #######
       rateLimiter16(input1[inIdx].cmd, rate, &steerRateFixdt);
       rateLimiter16(input2[inIdx].cmd, rate, &speedRateFixdt);
@@ -423,7 +423,7 @@ int main(void) {
           LCD_SetLocation(&lcd, 0, 0); LCD_WriteString(&lcd, "Emergency Off!");
           LCD_SetLocation(&lcd, 0, 1); LCD_WriteString(&lcd, "Keeper too fast.");
         #endif
-        poweroff();
+        //poweroff();
       }
 
       #ifdef SUPPORT_NUNCHUK
@@ -542,7 +542,7 @@ int main(void) {
     poweroffPressCheck();
 
     // ####### BEEP AND EMERGENCY POWEROFF #######
-    if (TEMP_POWEROFF_ENABLE && board_temp_deg_c >= TEMP_POWEROFF && speedAvgAbs < 20){  // poweroff before mainboard burns OR low bat 3
+    /*if (TEMP_POWEROFF_ENABLE && board_temp_deg_c >= TEMP_POWEROFF && speedAvgAbs < 20){  // poweroff before mainboard burns OR low bat 3
       #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
         printf("Powering off, temperature is too high\r\n");
       #endif
@@ -577,6 +577,7 @@ int main(void) {
 
 
     inactivity_timeout_counter++;
+    */
 
     // ####### INACTIVITY TIMEOUT #######
     if (abs(cmdL) > 50 || abs(cmdR) > 50) {
