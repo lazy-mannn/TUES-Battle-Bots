@@ -1,0 +1,4 @@
+First connect the esp32 to the pc and run the esp32blemac program.
+Then write the mac addresss in Sixaxis pairing tool. https://sixaxispairtool.en.lo4d.com/windows
+After that flash the control program.
+When you press the PS4 button the joystick should connect to the esp32. REMEMBER the ds4 can have the mac address of one device at a time.
