@@ -20,9 +20,6 @@
 #define SDA_2 33    //pins for the dac responsible controlling speed
 #define SCL_2 32
 
-int weapon = 22;    //pin for the weapon
-int gear;           //For limiting speed
-
 TwoWire I2Cone = TwoWire(0);
 TwoWire I2Ctwo = TwoWire(1);
 
@@ -46,22 +43,16 @@ void setup()
   bool status = direction.begin(0x60, &I2Cone);   //You may use different address for the DAC
   bool status1 = speed.begin(0x61, &I2Ctwo);      //You may use different address for the DAC
 
-  pinMode(weapon, OUTPUT);    //For the weapon pin.
-
   PS4.begin();    //Don't change the ESP32 bluetooth mac address. Flash the ESP32 mac address via sixaxis pairing tool. https://sixaxispairtool.en.lo4d.com/windowslo4You
   Serial.println("Ready.");
-  gear = 0;
 }
 
 void loop()
 {
-  //Speed gear
-  if (PS4.Up()) gear = 2;   //Higher speed
-  if (PS4.Down()) gear = 0; //Lower speed
   //For moving back
   back = 0;
   back =  (PS4.L2Value());
-  back_value = (2048-back*(6+gear));
+  back_value = (2048-back*5);
   //Use for debuging:
     //Serial.println(PS4.L2Value());
     //Serial.println(back_value);
@@ -69,7 +60,7 @@ void loop()
   //For moving forward
   forward = 0;
   forward = (PS4.R2Value());
-  forward_value = (2048+forward*(6+gear));
+  forward_value = (2048+forward*5);
   //Use for debuging:
     //Serial.println(PS4.R2Value());
     //Serial.println(forward_value);
@@ -86,7 +77,7 @@ void loop()
   if((PS4.R2Value())==0 && (PS4.L2Value())==0)
   speed.setVoltage(2048, false);
 
-  //For going forward
+  //If you get input from the two trigers it will only accept the one for moving forward!
   if((PS4.R2Value())>0 && (PS4.L2Value())>0)
   speed.setVoltage(forward_value, false);
 
@@ -95,7 +86,7 @@ void loop()
   steer = (PS4.LStickX());
   if(steer < -10 || steer >10)    //A deadzone for the joystick. You can modify it as you like.
   {
-    steer_value = 2048+steer*16;
+    steer_value = 2048+steer*10;
     direction.setVoltage(steer_value, false);
     //Use for debuging
       //Serial.println(PS4.LStickX());
@@ -107,15 +98,5 @@ void loop()
     direction.setVoltage(2048, false);    //Staying idle
   }
 
-
-  //The code for the weapon. You ca comment it if you won't use it.
-  if(PS4.Square())
-  digitalWrite(weapon, HIGH);
-  else
-  digitalWrite(weapon, LOW);
-  
-
-
-  delay(20);
-
+  //delay(1000);    //use only for debuging
 }
